@@ -40,6 +40,6 @@ fn generate_permutations<'a>(env: Env<'a>, domain_str: String) -> NifResult<Term
 rustler::init!(
     "Elixir.DomainTwistex",
     [
-        generate_permutations,
+        generate_permutations
     ]
 );

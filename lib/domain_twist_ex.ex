@@ -171,6 +171,7 @@ defmodule DomainTwistex do
     with {:ok, ips} <- resolve_ips(fqdn),
          mx_records <- get_mx_records(fqdn),
          txt_records <- get_txt_records(fqdn),
+         server_response <- check_server(fqdn),
          {:ok, ns_info} <- get_nameservers(fqdn) do
       {:ok,
        Map.merge(domain, %{
@@ -178,6 +179,7 @@ defmodule DomainTwistex do
          ip_addresses: ips,
          mx_records: mx_records,
          txt_records: txt_records,
+         server_response: server_response,
          nameservers: ns_info.nameservers
        })}
     else
@@ -271,5 +273,59 @@ defmodule DomainTwistex do
       {:error, reason} ->
         {:error, "Failed to retrieve TXT records: #{inspect(reason)}"}
     end
+  end
+
+  defp check_server(fqdn) do
+    case :gen_tcp.connect(String.to_charlist(fqdn), 80, [:binary, packet: 0, active: false], 10000) do
+      {:ok, socket} ->
+        http_request = "HEAD / HTTP/1.1\r\nHost: #{fqdn}\r\nConnection: close\r\n\r\n"
+        :gen_tcp.send(socket, http_request)
+
+        case :gen_tcp.recv(socket, 0, 5000) do
+          {:ok, response} ->
+            :gen_tcp.close(socket)
+            parse_response(response)
+
+          {:error, reason} ->
+            %{
+              hostname: fqdn,
+              status: :error,
+              reason: "Failed to receive response: #{inspect(reason)}"
+            }
+        end
+
+      {:error, reason} ->
+        %{
+          hostname: fqdn,
+          status: :error,
+          reason: "Connection failed: #{inspect(reason)}"
+        }
+    end
+  end
+
+  defp parse_response(response) do
+    [status_line | headers] = String.split(response, "\r\n")
+    [_http_version, status_code | _] = String.split(status_line, " ")
+
+    headers_map =
+      headers
+      |> Enum.filter(&(&1 != ""))
+      |> Enum.map(fn header ->
+        case String.split(header, ": ", parts: 2) do
+          [key, value] -> {key, value}
+          _ -> nil
+        end
+      end)
+      |> Enum.filter(&(&1 != nil))
+      |> Map.new()
+
+    # Extract server version from headers
+    server_info = Map.get(headers_map, "Server", "Unknown")
+
+    %{
+      status_code: status_code,
+      server: server_info,
+      headers: headers_map
+    }
   end
 end
