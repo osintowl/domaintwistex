@@ -107,6 +107,7 @@ defmodule DomainTwistex do
     domain
     |> generate_permutations()
     |> Task.async_stream(
+      # Changed this line
       &check_domain/1,
       ordered: opts[:ordered],
       max_concurrency: opts[:max_concurrency],
@@ -168,15 +169,23 @@ defmodule DomainTwistex do
 
   defp check_domain(%{fqdn: fqdn} = domain) do
     with {:ok, ips} <- resolve_ips(fqdn),
-         mx_records <- get_mx_records(fqdn) do
+         mx_records <- get_mx_records(fqdn),
+         txt_records <- get_txt_records(fqdn),
+         {:ok, ns_info} <- get_nameservers(fqdn) do
       {:ok,
        Map.merge(domain, %{
          resolvable: true,
          ip_addresses: ips,
-         mx_records: mx_records
+         mx_records: mx_records,
+         txt_records: txt_records,
+         nameservers: ns_info.nameservers
        })}
     else
-      _ -> {:error, :not_resolvable}
+      {:error, error_message} when is_binary(error_message) ->
+        {:error, error_message}
+
+      _ ->
+        {:error, :not_resolvable}
     end
   end
 
@@ -193,6 +202,32 @@ defmodule DomainTwistex do
 
       _ ->
         {:error, :invalid_response}
+    end
+  end
+
+  defp get_nameservers(domain) do
+    try do
+      # Using :inet_res from Erlang's standard library
+      case :inet_res.lookup(String.to_charlist(domain), :in, :ns) do
+        [] ->
+          {:error, "No nameservers found"}
+
+        nameservers when is_list(nameservers) ->
+          formatted_ns =
+            nameservers
+            |> Enum.map(fn ns ->
+              ns
+              |> to_string()
+              |> String.trim_trailing(".")
+            end)
+
+          {:ok, %{nameservers: formatted_ns}}
+
+        {:error, reason} ->
+          {:error, "DNS lookup failed: #{reason}"}
+      end
+    rescue
+      e -> {:error, "Nameserver lookup error: #{Exception.message(e)}"}
     end
   end
 
@@ -217,5 +252,24 @@ defmodule DomainTwistex do
     e ->
       IO.puts("Error in get_mx_records: #{inspect(e)}")
       []
+  end
+
+  defp get_txt_records(fqdn) do
+    case :inet_res.resolve(String.to_charlist(fqdn), :in, :txt) do
+      {:ok, dns_response} ->
+        # Get the responses section from the DNS response tuple
+        responses = elem(dns_response, 3)
+
+        # Map over each response and extract the TXT record
+        Enum.map(responses, fn response ->
+          # Extract the actual record content (at position 6 in the tuple)
+          record = elem(response, 6)
+          # Convert the charlist to string
+          List.to_string(record)
+        end)
+
+      {:error, reason} ->
+        {:error, "Failed to retrieve TXT records: #{inspect(reason)}"}
+    end
   end
 end
