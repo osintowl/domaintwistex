@@ -31,7 +31,7 @@ defmodule DomainTwistex.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:rustler, "~> 0.30.0"},
+      {:rustler, "~> 0.36.0"},
       {:ex_doc, "~> 0.29", only: :dev, runtime: false}
     ]
   end
