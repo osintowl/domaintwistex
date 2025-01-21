@@ -40,5 +40,5 @@ fn generate_permutations(domain_str: String) -> NifResult<Vec<Result>> {
     Ok(results)
 }
 
-rustler::init!("Elixir.DomainTwistex", [generate_permutations]);
+rustler::init!("Elixir.DomainTwistex.Utils", [generate_permutations]);
 // Huge thanks to filmor from elixirforum.com for fixing my terrible rust code!
