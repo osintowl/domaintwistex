@@ -1,19 +1,18 @@
 # DomainTwistex
 
-DomainTwistex is an Elixir library that provides domain name permutation and typosquatting detection capabilities, powered by the Rust-based twistrs library.
+DomainTwistex is an Elixir library that provides domain name permutation and typosquatting detection capabilities, powered by the Rust-based twistrs library. Version 0.4.0 introduces enhanced concurrency features and improved domain validation.
 
 ## Features
 
 - Generate domain permutations for typosquatting detection
-- Support for various permutation types:
-  - Character omission
-  - Character replacement
-  - Character insertion
-  - Character swapping
-  - Common typos
-  - Homoglyphs
-- MX record validation for generated domains
-- Concurrent domain analysis
+- Comprehensive domain validation including:
+  - IP resolution
+  - MX record validation
+  - TXT record checking
+  - Nameserver verification
+  - Server response analysis
+- High-performance concurrent domain analysis
+- Rust-powered permutation generation
 
 ## Installation
 
@@ -22,7 +21,7 @@ Add `domaintwistex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:domaintwistex, "~> 0.1.0"}
+    {:domaintwistex, "~> 0.4.0"}
   ]
 end
 ```
@@ -35,34 +34,35 @@ end
 ## Usage
 
 ```elixir
-# Generate domain permutations
+# Basic domain analysis
 domains = DomainTwistex.analyze_domain("example.com")
 
 # Get domains with MX records
 live_domains = DomainTwistex.get_live_mx_domains("example.com")
 
-# Customize permutation options
-domains = DomainTwistex.analyze_domain("example.com", 
-  types: [:addition, :omission, :homoglyph])
+# Advanced usage with custom options
+domains = DomainTwistex.analyze_domain("example.com",
+  max_concurrency: 50,
+  timeout: 5000,
+  ordered: false
+)
 ```
 
 ## Configuration
 
-By default, all permutation types are enabled. You can specify which types to use:
+### Performance Options
 
-- `:addition` - Character addition
-- `:omission` - Character omission
-- `:homoglyph` - Homoglyph substitution
-- `:repetition` - Character repetition
-- `:replacement` - Character replacement
-- `:subdomain` - Subdomain insertion
-- `:transposition` - Character transposition
-- `:vowel_swap` - Vowel swapping
-- `:various` - Various common typos
+New in 0.4.0:
+- `max_concurrency`: Maximum number of concurrent tasks (default: System.schedulers_online() * 2)
+- `timeout`: Timeout for each task in milliseconds (default: 5000)
+- `ordered`: Maintain result order (default: false)
 
 ## Performance
 
-The library uses Rust NIFs for domain permutation generation, providing excellent performance while maintaining safety through the Rustler framework.
+The library uses:
+- Rust NIFs for domain permutation generation
+- Concurrent task processing for domain validation
+- Default system DNS resolution
 
 ## Contributing
 
@@ -84,3 +84,4 @@ Copyright (c) 2023 JuxhinDB
 ## Author
 
 nix2intel (@nix2intel)
+```
