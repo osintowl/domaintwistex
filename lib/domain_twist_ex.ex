@@ -1,4 +1,4 @@
-defmodule DomainTwistex do
+defmodule DomainTwistex.Twist do
   use Rustler, otp_app: :domaintwistex, crate: "domaintwistex"
 
   @moduledoc """
@@ -93,34 +93,32 @@ defmodule DomainTwistex do
         
     ```
   """
-  def analyze_domain(domain, opts \\ []) do
-    opts =
-      Keyword.merge(
-        [
-          max_concurrency: System.schedulers_online() * 2,
-          timeout: 5_000,
-          ordered: false
-        ],
-        opts
+    def analyze_domain(domain, opts \\ []) do
+      opts =
+        Keyword.merge(
+          [
+            max_concurrency: System.schedulers_online() * 2,
+            timeout: 5_000,
+            ordered: false
+          ],
+          opts
+        )
+      domain
+      #domain is a string and is passed to generate permutations
+      |> generate_permutations()
+      |> Task.async_stream(
+        fn permutation -> check_domain(permutation) end,  # changed this line
+        ordered: opts[:ordered],
+        max_concurrency: opts[:max_concurrency],
+        timeout: opts[:timeout],
+        on_timeout: :kill_task
       )
-
-    domain
-    |> generate_permutations()
-    |> Task.async_stream(
-      # Changed this line
-      &check_domain/1,
-      ordered: opts[:ordered],
-      max_concurrency: opts[:max_concurrency],
-      timeout: opts[:timeout],
-      on_timeout: :kill_task
-    )
-    |> Stream.filter(fn
-      # Filter out original domain
-      {:ok, {:ok, result}} -> result.fqdn != domain
-      _ -> false
-    end)
-    |> Stream.map(fn {:ok, {:ok, result}} -> result end)
-    |> Enum.into([])
+      |> Stream.filter(fn
+        {:ok, {:ok, result}} -> result.fqdn != domain
+        _ -> false
+      end)
+      |> Stream.map(fn {:ok, {:ok, result}} -> result end)
+      |> Enum.into([])
   end
 
   @doc group: "2. Elixir Functions"
@@ -167,14 +165,15 @@ defmodule DomainTwistex do
     end
   end
 
-  defp check_domain(%{fqdn: fqdn} = domain) do
-    with {:ok, ips} <- resolve_ips(fqdn),
-         mx_records <- get_mx_records(fqdn),
-         txt_records <- get_txt_records(fqdn),
-         server_response <- check_server(fqdn),
-         {:ok, ns_info} <- get_nameservers(fqdn) do
+  
+  defp check_domain(permutation) do
+    with {:ok, ips} <- resolve_ips(permutation.fqdn, permutation.tld),
+         mx_records <- get_mx_records(permutation.fqdn),
+         txt_records <- get_txt_records(permutation.fqdn),
+         server_response <- check_server(permutation.fqdn),
+         {:ok, ns_info} <- get_nameservers(permutation.fqdn) do
       {:ok,
-       Map.merge(domain, %{
+       Map.merge(permutation, %{
          resolvable: true,
          ip_addresses: ips,
          mx_records: mx_records,
@@ -191,26 +190,41 @@ defmodule DomainTwistex do
     end
   end
 
-  defp resolve_ips(fqdn) do
-    case :inet_res.lookup(String.to_charlist(fqdn), :in, :a) do
+    defp resolve_ips(perm_domain, perm_tld) do
+    case :inet_res.lookup(String.to_charlist(perm_domain), :in, :cname) do
+      [cname] ->
+        # Convert CNAME charlist to string and compare with TLD
+        if to_string(cname) == perm_tld do
+          {:error, "tld matches false positive"}
+        else
+          # If CNAME doesn't match TLD, proceed with A record lookup
+          case :inet_res.lookup(String.to_charlist(perm_domain), :in, :a) do
+            [] -> {:error, :no_ips}
+            ips when is_list(ips) ->
+              {:ok, Enum.map(ips, fn ip -> ip |> :inet.ntoa() |> to_string() end)}
+            _ -> {:error, :invalid_response}
+          end
+        end
+      
       [] ->
-        {:error, :no_ips}
-
-      ips when is_list(ips) ->
-        {:ok,
-         Enum.map(ips, fn ip ->
-           ip |> :inet.ntoa() |> to_string()
-         end)}
-
+        # No CNAME, just check A records
+        case :inet_res.lookup(String.to_charlist(perm_domain), :in, :a) do
+          [] -> {:error, :no_ips}
+          ips when is_list(ips) ->
+            {:ok, Enum.map(ips, fn ip -> ip |> :inet.ntoa() |> to_string() end)}
+          _ -> {:error, :invalid_response}
+        end
+  
       _ ->
         {:error, :invalid_response}
     end
   end
 
-  defp get_nameservers(domain) do
+
+  defp get_nameservers(perm_domain) do
     try do
       # Using :inet_res from Erlang's standard library
-      case :inet_res.lookup(String.to_charlist(domain), :in, :ns) do
+      case :inet_res.lookup(String.to_charlist(perm_domain), :in, :ns) do
         [] ->
           {:error, "No nameservers found"}
 
@@ -233,8 +247,8 @@ defmodule DomainTwistex do
     end
   end
 
-  defp get_mx_records(fqdn) do
-    case :inet_res.lookup(String.to_charlist(fqdn), :in, :mx) do
+  defp get_mx_records(perm_domain) do
+    case :inet_res.lookup(String.to_charlist(perm_domain), :in, :mx) do
       [] ->
         []
 
@@ -256,8 +270,8 @@ defmodule DomainTwistex do
       []
   end
 
-  defp get_txt_records(fqdn) do
-    case :inet_res.resolve(String.to_charlist(fqdn), :in, :txt) do
+  defp get_txt_records(perm_domain) do
+    case :inet_res.resolve(String.to_charlist(perm_domain), :in, :txt) do
       {:ok, dns_response} ->
         # Get the responses section from the DNS response tuple
         responses = elem(dns_response, 3)
@@ -275,10 +289,10 @@ defmodule DomainTwistex do
     end
   end
 
-  defp check_server(fqdn) do
-    case :gen_tcp.connect(String.to_charlist(fqdn), 80, [:binary, packet: 0, active: false], 10000) do
+  defp check_server(perm_domain) do
+    case :gen_tcp.connect(String.to_charlist(perm_domain), 80, [:binary, packet: 0, active: false], 10000) do
       {:ok, socket} ->
-        http_request = "HEAD / HTTP/1.1\r\nHost: #{fqdn}\r\nConnection: close\r\n\r\n"
+        http_request = "HEAD / HTTP/1.1\r\nHost: #{perm_domain}\r\nConnection: close\r\n\r\n"
         :gen_tcp.send(socket, http_request)
 
         case :gen_tcp.recv(socket, 0, 5000) do
@@ -288,7 +302,7 @@ defmodule DomainTwistex do
 
           {:error, reason} ->
             %{
-              hostname: fqdn,
+              hostname: perm_domain,
               status: :error,
               reason: "Failed to receive response: #{inspect(reason)}"
             }
@@ -296,7 +310,7 @@ defmodule DomainTwistex do
 
       {:error, reason} ->
         %{
-          hostname: fqdn,
+          hostname: perm_domain,
           status: :error,
           reason: "Connection failed: #{inspect(reason)}"
         }
