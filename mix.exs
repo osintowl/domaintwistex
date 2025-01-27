@@ -3,7 +3,7 @@ defmodule DomainTwistex.MixProject do
 
 
   @version "0.5.0"
-  
+  @force_build? System.get_env("DOMAINTWISTEX_BUILD") in ["1", "true"]  
   def project do
     [
       app: :domaintwistex,
@@ -35,7 +35,7 @@ defmodule DomainTwistex.MixProject do
   defp deps do
     [
       {:rustler_precompiled, "~> 0.8"},
-      {:rustler, ">= 0.0.0", optional: true},
+      {:rustler, ">= 0.35.0", optional: not @force_build?},
       {:ex_doc, "~> 0.29", only: :dev, runtime: false}
     ]
   end

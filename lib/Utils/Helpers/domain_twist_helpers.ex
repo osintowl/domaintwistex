@@ -5,7 +5,16 @@ defmodule DomainTwistex.Utils do
     otp_app: :domaintwistex,
     crate: "domaintwistex", 
     version: version,
-    base_url: "https://github.com/nix2intel/domaintwistex/releases/download/v#{version}"  
+    base_url: "https://github.com/nix2intel/domaintwistex/releases/download/v#{version}",
+    targets: ~w(
+      aarch64-apple-darwin
+      aarch64-unknown-linux-gnu
+      x86_64-apple-darwin
+      x86_64-pc-windows-msvc
+      x86_64-pc-windows-gnu
+      x86_64-unknown-linux-gnu
+    ),
+    force_build: System.get_env("DOMAINTWISTEX_BUILD") in ["1", "true"] 
   alias DomainTwistex.DNS
   alias DomainTwistex.SPF
 
