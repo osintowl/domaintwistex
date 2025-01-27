@@ -46,7 +46,7 @@ jobs:
       id: build-crate
       uses: philss/rustler-precompiled-action@v1.0.1
       with:
-        project-name: example
+        project-name: domaintwistex
         project-version: ${{ env.PROJECT_VERSION }}
         target: ${{ matrix.job.target }}
         use-cross: ${{ matrix.job.use-cross }}
