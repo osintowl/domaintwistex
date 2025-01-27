@@ -11,23 +11,28 @@ jobs:
   build_release:
     name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        nif: ["2.16", "2.15"]
-        job:
-          - { target: arm-unknown-linux-gnueabihf , os: ubuntu-20.04 , use-cross: true }
-          - { target: aarch64-unknown-linux-gnu   , os: ubuntu-20.04 , use-cross: true }
-          - { target: aarch64-apple-darwin        , os: macos-14      }
-          - { target: riscv64gc-unknown-linux-gnu , os: ubuntu-20.04 , use-cross: true }
-          - { target: x86_64-apple-darwin         , os: macos-14      }
-          - { target: x86_64-unknown-linux-gnu    , os: ubuntu-20.04  }
-          - { target: x86_64-pc-windows-gnu       , os: windows-2019  }
-          - { target: x86_64-pc-windows-msvc      , os: windows-2019  }
-
+    
+  permissions:
+      contents: write
+      id-token: write
+      attestations: write
+  
+  strategy:
+    fail-fast: false
+    matrix:
+      nif: ["2.15"]
+      job:
+        - { target: arm-unknown-linux-gnueabihf , os: ubuntu-20.04 , use-cross: true }
+        - { target: aarch64-unknown-linux-gnu   , os: ubuntu-20.04 , use-cross: true }
+        - { target: aarch64-apple-darwin        , os: macos-14      }
+        - { target: riscv64gc-unknown-linux-gnu , os: ubuntu-20.04 , use-cross: true }
+        - { target: x86_64-apple-darwin         , os: macos-14      }
+        - { target: x86_64-unknown-linux-gnu    , os: ubuntu-20.04  }
+        - { target: x86_64-pc-windows-gnu       , os: windows-2019  }
+        - { target: x86_64-pc-windows-msvc      , os: windows-2019  }
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v3
+    - Name: Checkout source code
+      Uses: actions/checkout@v4
 
     - name: Extract project version
       shell: bash
@@ -51,6 +56,11 @@ jobs:
         nif-version: ${{ matrix.nif }}
         use-cross: ${{ matrix.job.use-cross }}
         project-dir: "native/domaintwistex"
+
+    - name: Artifact attestation
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-path: ${{ steps.build-crate.outputs.file-path }}
 
     - name: Artifact upload
       uses: actions/upload-artifact@v4
