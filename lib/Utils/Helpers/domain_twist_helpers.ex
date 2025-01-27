@@ -1,5 +1,11 @@
 defmodule DomainTwistex.Utils do
-  use Rustler, otp_app: :domaintwistex, crate: "domaintwistex"
+  version = Mix.Project.config()[:version]
+  # use Rustler, otp_app: :domaintwistex, crate: "domaintwistex"
+  use RusterPrecompiled,
+    otp_app: :domaintwistex,
+    crate: "domaintwistex", 
+    version: version,
+    base_url: "https://github.com/nix2intel/domaintwistex/releases/downloadi/v#{version}"  
   alias DomainTwistex.DNS
   alias DomainTwistex.SPF
 

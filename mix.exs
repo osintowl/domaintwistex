@@ -10,14 +10,14 @@ defmodule DomainTwistex.MixProject do
       deps: deps(),
       description: "Domain twisting library using twistrs",
       package: package(),
-      rustler: [
-        crates: [
-          domaintwistex: [
-            path: "native/domaintwistex",
-            mode: if(Mix.env() == :prod, do: :release, else: :debug)
-          ]
-        ]
-      ]
+      # rustler: [
+      #   crates: [
+      #     domaintwistex: [
+      #       path: "native/domaintwistex",
+      #       mode: if(Mix.env() == :prod, do: :release, else: :debug)
+      #     ]
+      #   ]
+      # ]
     ]
   end
 
@@ -31,7 +31,8 @@ defmodule DomainTwistex.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:rustler, "~> 0.36.0"},
+      {:rustler_precompiled, "~> 0.8"},
+      {:rustler, ">= 0.0.0", optional: true},
       {:ex_doc, "~> 0.29", only: :dev, runtime: false}
     ]
   end
@@ -41,8 +42,12 @@ defmodule DomainTwistex.MixProject do
       name: "domaintwistex",
       licenses: ["BSD-3-Clause"],
       links: %{"GitHub" => "https://github.com/nix2intel/domaintwistex"},
-      files: ~w(lib native/domaintwistex/src native/domaintwistex/Cargo.* 
-      native/domaintwistex/.cargo README.md mix.exs)
+        files: [
+        "lib",
+        "native",
+        "checksum-*.exs",
+        "mix.exs"
+      ],
     ]
   end
 end
