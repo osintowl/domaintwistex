@@ -1,6 +1,7 @@
 defmodule DomainTwistex.Utils do
   use Rustler, otp_app: :domaintwistex, crate: "domaintwistex"
   alias DomainTwistex.DNS
+  alias DomainTwistex.SPF
 
   @moduledoc """
   DomainTwistEx provides domain permutation generation and validation utilities.
@@ -97,6 +98,8 @@ defmodule DomainTwistex.Utils do
     with {:ok, ips} <- validate_domain_resolution(permutation.fqdn, permutation.tld),
          {:ok, mx_records} <- DNS.get_mx_records(permutation.fqdn),
          {:ok, txt_records} <- DNS.get_txt_records(permutation.fqdn),
+         spf_records <- SPF.parse_txt_records({:ok, txt_records}),
+         {:ok, dmarc} <- DNS.check_dmarc(permutation.fqdn),
          server_response <- check_server(permutation.fqdn),
          {:ok, nameservers} <- DNS.get_nameservers(permutation.fqdn) do
       {:ok,
@@ -105,6 +108,8 @@ defmodule DomainTwistex.Utils do
          ip_addresses: ips,
          mx_records: mx_records,
          txt_records: txt_records,
+         spf_records: spf_records,
+         dmarc: dmarc,
          server_response: server_response,
          nameservers: nameservers
        })}

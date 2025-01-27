@@ -1,6 +1,6 @@
 [package]
 name = "domaintwistex"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2021"
 
 [lib]
@@ -12,3 +12,14 @@ crate-type = ["cdylib"]
 rustler = "0.29.1"
 twistrs = "0.7.0"
 futures = "0.3"
+
+[target.'cfg(target_os = "macos")']
+rustflags = [
+  "-C", "link-arg=-undefined",
+  "-C", "link-arg=dynamic_lookup",
+]
+
+[target.x86_64-unknown-linux-musl]
+rustflags = [
+  "-C", "target-feature=-crt-static"
+]

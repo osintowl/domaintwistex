@@ -150,6 +150,29 @@ defmodule DomainTwistex.DNS do
     end
   end
 
+  def check_dmarc(domain) do
+    dmarc_domain = "_dmarc.#{domain}"
+    
+    case :inet_res.lookup(String.to_charlist(dmarc_domain), :in, :txt) do
+      [] -> 
+        {:ok, %{error: "No DMARC record found"}}
+      records when is_list(records) -> 
+        # Convert the charlist to string and handle the nested list structure
+        dmarc_records = records
+        |> Enum.map(fn [record] -> 
+          record |> to_string() |> String.trim()
+        end)
+        |> Enum.filter(&String.starts_with?(&1, "v=DMARC1"))
+
+        case dmarc_records do
+          [] -> {:ok, %{error: "No valid DMARC record found"}}
+          [record | _] -> {:ok, parse_dmarc_policy(record)}
+        end
+      {:error, reason} -> 
+        {:ok, %{error: "DNS lookup failed: #{reason}"}}
+    end
+  end
+
   # Private Functions
 
   @doc false
@@ -165,4 +188,17 @@ defmodule DomainTwistex.DNS do
         {:error, :invalid_response}
     end
   end
+
+  defp parse_dmarc_policy(record) do
+    record
+    |> String.split(";")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reduce(%{}, fn part, acc ->
+      case String.split(part, "=", parts: 2) do
+        [key, value] -> Map.put(acc, key, value)
+        _ -> acc
+      end
+    end)
+  end
 end
+
