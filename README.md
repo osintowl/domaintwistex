@@ -21,7 +21,7 @@ Add `domaintwistex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:domaintwistex, "~> 0.4.0"}
+    {:domaintwistex, "~> 0.6.0"}
   ]
 end
 ```
