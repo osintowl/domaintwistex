@@ -5,7 +5,7 @@ defmodule DomainTwistex.SPF do
   DomainTwistex.SPF provides functionality to parse and explain SPF (Sender Policy Framework) records
   with enhanced categorization for template rendering.
 
-  Copyright (c) 2024, [Nix2Intel]
+  Copyright (c) 2024, [OsintOwl]
   All rights reserved.
   This source code is licensed under the BSD-3-Clause license.
   """

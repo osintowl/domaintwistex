@@ -2,25 +2,17 @@ defmodule DomainTwistex.MixProject do
   use Mix.Project
 
 
-  @version "0.5.0"
+  @version "0.6.0"
   @force_build? System.get_env("DOMAINTWISTEX_BUILD") in ["1", "true"]  
   def project do
     [
       app: :domaintwistex,
       version: @version,
-      elixir: "~> 1.18",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: "Domain twisting library using twistrs",
-      package: package(),
-      # rustler: [
-      #   crates: [
-      #     domaintwistex: [
-      #       path: "native/domaintwistex",
-      #       mode: if(Mix.env() == :prod, do: :release, else: :debug)
-      #     ]
-      #   ]
-      # ]
+      package: package()
     ]
   end
 
@@ -44,7 +36,7 @@ defmodule DomainTwistex.MixProject do
     [
       name: "domaintwistex",
       licenses: ["BSD-3-Clause"],
-      links: %{"GitHub" => "https://github.com/nix2intel/domaintwistex"},
+      links: %{"GitHub" => "https://github.com/osintowl/domaintwistex"},
         files: [
         "lib",
         "native",

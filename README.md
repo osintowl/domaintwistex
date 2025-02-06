@@ -83,5 +83,5 @@ Copyright (c) 2023 JuxhinDB
 
 ## Author
 
-nix2intel (@nix2intel)
+OsintOwl
 ```

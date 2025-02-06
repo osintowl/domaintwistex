@@ -5,7 +5,7 @@ defmodule DomainTwistex.Utils do
     otp_app: :domaintwistex,
     crate: "domaintwistex", 
     version: version,
-    base_url: "https://github.com/nix2intel/domaintwistex/releases/download/v#{version}",
+    base_url: "https://github.com/osintowl/domaintwistex/releases/download/v#{version}",
     targets: ~w(
       aarch64-apple-darwin
       aarch64-unknown-linux-gnu
