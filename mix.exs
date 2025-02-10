@@ -2,7 +2,7 @@ defmodule DomainTwistex.MixProject do
   use Mix.Project
 
 
-  @version "0.6.0"
+  @version "0.6.1"
   @force_build? System.get_env("DOMAINTWISTEX_BUILD") in ["1", "true"]  
   def project do
     [

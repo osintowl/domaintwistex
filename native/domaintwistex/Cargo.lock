@@ -106,7 +106,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "domaintwistex"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "futures",
  "rustler",
@@ -842,9 +842,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "twistrs"
-version = "0.7.0"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ce8ff044bb471909b8f07812b265707264595a6b3f445deae7b899af2cb62c5"
+checksum = "204bbe4a8681dc71d3090b8b24df9485c189976abfa6da4137c1961d472aad8f"
 dependencies = [
  "addr",
  "anyhow",
