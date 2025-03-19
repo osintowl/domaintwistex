@@ -9,6 +9,7 @@ defmodule DomainTwistex.Utils do
     targets: ~w(
       aarch64-apple-darwin
       aarch64-unknown-linux-gnu
+      aarch64-linux-android
       x86_64-apple-darwin
       x86_64-pc-windows-msvc
       x86_64-pc-windows-gnu
@@ -109,7 +110,7 @@ defmodule DomainTwistex.Utils do
       }}
       ```
   """
-  def check_domain(permutation) do
+  def check_domain(permutation, domain) do
     with {:ok, ips} <- validate_domain_resolution(permutation.fqdn, permutation.tld),
          {:ok, mx_records} <- DNS.get_mx_records(permutation.fqdn),
          {:ok, txt_records} <- DNS.get_txt_records(permutation.fqdn),
@@ -126,7 +127,8 @@ defmodule DomainTwistex.Utils do
          spf_records: spf_records,
          dmarc: dmarc,
          server_response: server_response,
-         nameservers: nameservers
+         nameservers: nameservers,
+         distance: String.jaro_distance(domain, permutation.fqdn)
        })}
     else
       {:error, error_message} when is_binary(error_message) ->

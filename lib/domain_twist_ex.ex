@@ -72,7 +72,7 @@ defmodule DomainTwistex.Twist do
     domain
     |> Utils.generate_permutations()
     |> Task.async_stream(
-      fn permutation -> Utils.check_domain(permutation) end,
+      fn permutation -> Utils.check_domain(permutation, domain) end,
       ordered: opts[:ordered],
       max_concurrency: opts[:max_concurrency],
       timeout: opts[:timeout],
