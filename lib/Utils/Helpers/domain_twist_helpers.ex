@@ -9,7 +9,6 @@ defmodule DomainTwistex.Utils do
     targets: ~w(
       aarch64-apple-darwin
       aarch64-unknown-linux-gnu
-      aarch64-linux-android
       x86_64-apple-darwin
       x86_64-pc-windows-msvc
       x86_64-pc-windows-gnu
