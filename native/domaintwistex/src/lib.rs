@@ -1,9 +1,8 @@
 use rustler::NifResult;
 use std::collections::HashSet;
 use twistrs::permutate::Domain;
+use twistrs::filter::Permissive;
 
-// 1. Rustler has builtin support for maps with atom keys
-// -------------------------------------------------------
 #[derive(rustler::NifMap)]
 struct Result {
     fqdn: String,
@@ -11,8 +10,6 @@ struct Result {
     kind: String,
 }
 
-// 2. You can return anything that is convertible to a Term, you don't need to do inline encoding (and thus don't need `env`, together with `NifMap`)
-// ------------------------------------------
 #[rustler::nif]
 fn generate_permutations(domain_str: String) -> NifResult<Vec<Result>> {
     let domain = match Domain::new(&domain_str) {
@@ -20,13 +17,8 @@ fn generate_permutations(domain_str: String) -> NifResult<Vec<Result>> {
         Err(_) => return Ok(Default::default()),
     };
 
-    // 3. No need to convert the HashSet into a Vec if you just want to
-    //    iterate over it again
-    // -----------------------------------------
-    let perms = match domain.all() {
-        Ok(p) => p.collect::<HashSet<_>>(),
-        Err(_) => return Ok(Default::default()),
-    };
+    // twistrs 0.9: all() takes a filter and returns iterator directly
+    let perms: HashSet<_> = domain.all(&Permissive).collect();
 
     let results = perms
         .iter()
@@ -40,5 +32,4 @@ fn generate_permutations(domain_str: String) -> NifResult<Vec<Result>> {
     Ok(results)
 }
 
-rustler::init!("Elixir.DomainTwistex.Utils", [generate_permutations]);
-// Huge thanks to filmor from elixirforum.com for fixing my terrible rust code!
+rustler::init!("Elixir.DomainTwistex.Utils");

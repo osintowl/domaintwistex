@@ -1,6 +1,6 @@
 [package]
 name = "domaintwistex"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 
 [lib]
@@ -9,8 +9,8 @@ path = "src/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-rustler = "0.29.1"
-twistrs = "0.7.3"
+rustler = "0.37"
+twistrs = "0.9"
 futures = "0.3"
 
 [target.'cfg(target_os = "macos")']
