@@ -28,6 +28,7 @@ defmodule DomainTwistex.MixProject do
     [
       {:rustler_precompiled, "~> 0.8"},
       {:rustler, ">= 0.35.0", optional: not @force_build?},
+      {:req, "~> 0.5"},
       {:ex_doc, "~> 0.29", only: :dev, runtime: false}
     ]
   end
