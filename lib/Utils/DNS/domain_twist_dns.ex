@@ -27,17 +27,17 @@ defmodule DomainTwistex.DNS do
     a_records = lookup_a_records(domain)
 
     case {cname_result, a_records} do
+      # No CNAME, has A records
       {[], {:ok, ips}} ->
         {:ok, %{ips: ips, cname: nil}}
 
-      {[cname], {:ok, ips}} ->
+      # One or more CNAMEs, has A records - take first CNAME
+      {[cname | _], {:ok, ips}} ->
         {:ok, %{ips: ips, cname: to_string(cname)}}
 
+      # A record lookup failed
       {_, {:error, reason}} ->
         {:error, reason}
-
-      _ ->
-        {:error, :invalid_response}
     end
   end
 
@@ -148,6 +148,31 @@ defmodule DomainTwistex.DNS do
       {:error, reason} ->
         {:error, "Failed to retrieve TXT records: #{inspect(reason)}"}
     end
+  end
+
+  @doc """
+  Detects if a domain has wildcard DNS configured.
+
+  Queries a random non-existent subdomain - if it resolves, the domain has wildcard DNS.
+
+  ## Parameters
+    * domain - String representing the domain to check
+
+  ## Returns
+    * `{:ok, boolean}` - true if wildcard DNS is detected
+  """
+  def has_wildcard(domain) do
+    # Generate a random subdomain that shouldn't exist
+    random_sub = :crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)
+    test_domain = "#{random_sub}.#{domain}"
+
+    case :inet_res.lookup(String.to_charlist(test_domain), :in, :a) do
+      [] -> {:ok, false}
+      ips when is_list(ips) and length(ips) > 0 -> {:ok, true}
+      _ -> {:ok, false}
+    end
+  rescue
+    _ -> {:ok, false}
   end
 
   def check_dmarc(domain) do
