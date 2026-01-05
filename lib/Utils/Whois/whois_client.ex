@@ -4,6 +4,16 @@ defmodule DomainTwistex.Utils.Whois do
 
   This module implements RDAP-first lookup with WHOIS fallback,
   using IANA RDAP bootstrap discovery and comprehensive TLD mappings.
+
+  ## WHOIS Server Data
+
+  WHOIS server mappings are sourced from IANA via the iana-whois-conf project,
+  which scrapes https://www.iana.org/domains/root/db/{tld}.html pages.
+
+  To update the WHOIS server list, run:
+
+      mix update_whois_servers
+
   """
 
   @iana_rdap_bootstrap_url "https://data.iana.org/rdap/dns.json"
@@ -11,149 +21,24 @@ defmodule DomainTwistex.Utils.Whois do
   # Cache the IANA bootstrap registry in process dictionary for performance
   @rdap_cache_key :rdap_bootstrap_cache
 
-  # WHOIS server mappings for fallback
-  @whois_servers %{
-    # Generic TLDs
-    "com" => "whois.verisign-grs.com",
-    "net" => "whois.verisign-grs.com",
-    "org" => "whois.pir.org",
-    "info" => "whois.afilias.net",
-    "biz" => "whois.neulevel.biz",
-    "name" => "whois.nic.name",
-    "pro" => "whois.afilias.net",
-    "aero" => "whois.afilias.net",
-    "asia" => "whois.nic.asia",
-    "cat" => "whois.nic.cat",
-    "coop" => "whois.nic.coop",
-    "edu" => "whois.educause.edu",
-    "gov" => "whois.dotgov.gov",
-    "int" => "whois.iana.org",
-    "jobs" => "whois.nic.jobs",
-    "mil" => "whois.nic.mil",
-    "mobi" => "whois.afilias.net",
-    "museum" => "whois.nic.museum",
-    "post" => "whois.dotpostregistry.net",
-    "tel" => "whois.nic.tel",
-    "travel" => "whois.nic.travel",
-    "xxx" => "whois.afilias.net",
+  # Load WHOIS servers from IANA-sourced data at compile time
+  @external_resource whois_servers_path = Path.join(:code.priv_dir(:domaintwistex), "whois_servers.json")
 
-    # Country Code TLDs (popular ones)
-    "ac" => "whois.nic.ac",
-    "ae" => "whois.aeda.net.ae",
-    "af" => "whois.nic.af",
-    "ag" => "whois.nic.ag",
-    "ai" => "whois.nic.ai",
-    "am" => "whois.nic.am",
-    "ar" => "whois.nic.ar",
-    "as" => "whois.nic.as",
-    "at" => "whois.nic.at",
-    "au" => "whois.aunic.net",
-    "be" => "whois.dns.be",
-    "bg" => "whois.nic.bg",
-    "br" => "whois.registro.br",
-    "by" => "whois.nic.by",
-    "bz" => "whois.nic.bz",
-    "ca" => "whois.cira.ca",
-    "cc" => "whois.nic.cc",
-    "ch" => "whois.nic.ch",
-    "cl" => "whois.nic.cl",
-    "cn" => "whois.cnnic.net.cn",
-    "co" => "whois.nic.co",
-    "cz" => "whois.nic.cz",
-    "de" => "whois.denic.de",
-    "dk" => "whois.dk-hostmaster.dk",
-    "ee" => "whois.eesti.ee",
-    "es" => "whois.nic.es",
-    "eu" => "whois.eu",
-    "fi" => "whois.ficora.fi",
-    "fm" => "whois.nic.fm",
-    "fr" => "whois.nic.fr",
-    "gg" => "whois.nic.gg",
-    "gr" => "whois.nic.gr",
-    "hk" => "whois.hkirc.hk",
-    "hr" => "whois.nic.hr",
-    "hu" => "whois.nic.hu",
-    "id" => "whois.nic.id",
-    "ie" => "whois.nic.ie",
-    "il" => "whois.nic.il",
-    "im" => "whois.nic.im",
-    "in" => "whois.nic.in",
-    "io" => "whois.nic.io",
-    "ir" => "whois.nic.ir",
-    "is" => "whois.isnic.is",
-    "it" => "whois.nic.it",
-    "je" => "whois.nic.je",
-    "jp" => "whois.jprs.jp",
-    "ke" => "whois.nic.ke",
-    "kr" => "whois.nic.or.kr",
-    "kz" => "whois.nic.kz",
-    "la" => "whois.nic.la",
-    "li" => "whois.nic.li",
-    "lt" => "whois.nic.lt",
-    "lu" => "whois.nic.lu",
-    "lv" => "whois.nic.lv",
-    "ly" => "whois.nic.ly",
-    "ma" => "whois.nic.ma",
-    "md" => "whois.nic.md",
-    "me" => "whois.nic.me",
-    "mg" => "whois.nic.mg",
-    "mk" => "whois.nic.mk",
-    "mn" => "whois.nic.mn",
-    "ms" => "whois.nic.ms",
-    "mu" => "whois.nic.mu",
-    "mx" => "whois.mx",
-    "my" => "whois.nic.my",
-    "na" => "whois.nic.na",
-    "nc" => "whois.nic.nc",
-    "nl" => "whois.domain-registry.nl",
-    "no" => "whois.norid.no",
-    "nu" => "whois.nic.nu",
-    "nz" => "whois.srs.net.nz",
-    "pe" => "whois.nic.pe",
-    "pl" => "whois.dns.pl",
-    "pm" => "whois.nic.pm",
-    "pr" => "whois.nic.pr",
-    "pt" => "whois.nic.pt",
-    "pw" => "whois.nic.pw",
-    "qa" => "whois.nic.qa",
-    "re" => "whois.nic.re",
-    "ro" => "whois.nic.ro",
-    "rs" => "whois.nic.rs",
-    "ru" => "whois.ripn.net",
-    "sa" => "whois.nic.sa",
-    "sc" => "whois.nic.sc",
-    "se" => "whois.iis.se",
-    "sg" => "whois.nic.sg",
-    "sh" => "whois.nic.sh",
-    "si" => "whois.nic.si",
-    "sk" => "whois.nic.sk",
-    "sm" => "whois.nic.sm",
-    "so" => "whois.nic.so",
-    "st" => "whois.nic.st",
-    "su" => "whois.nic.su",
-    "tc" => "whois.nic.tc",
-    "tf" => "whois.nic.tf",
-    "th" => "whois.nic.th",
-    "tk" => "whois.nic.tk",
-    "tl" => "whois.nic.tl",
-    "tm" => "whois.nic.tm",
-    "tn" => "whois.nic.tn",
-    "to" => "whois.nic.to",
-    "tr" => "whois.nic.tr",
-    "tv" => "whois.nic.tv",
-    "tw" => "whois.nic.tw",
-    "ua" => "whois.nic.ua",
-    "ug" => "whois.nic.ug",
-    "uk" => "whois.nic.uk",
-    "us" => "whois.nic.us",
-    "uy" => "whois.nic.uy",
-    "uz" => "whois.nic.uz",
-    "vc" => "whois.nic.vc",
-    "ve" => "whois.nic.ve",
-    "vg" => "whois.nic.vg",
-    "ws" => "whois.nic.ws",
-    "za" => "whois.registry.net.za"
-  }
+  @whois_servers (
+    case File.read(whois_servers_path) do
+      {:ok, json} ->
+        Jason.decode!(json)
+
+      {:error, _} ->
+        # Fallback for when priv file doesn't exist (e.g., during initial compile)
+        %{
+          "com" => "whois.verisign-grs.com",
+          "net" => "whois.verisign-grs.com",
+          "org" => "whois.publicinterestregistry.org",
+          "io" => "whois.nic.io"
+        }
+    end
+  )
 
   @doc """
   Checks if a domain is registered.
@@ -194,6 +79,12 @@ defmodule DomainTwistex.Utils.Whois do
     _ -> {:error, :lookup_failed}
   end
 
+  # Marker for fields not available in WHOIS fallback
+  @whois_not_available "Not available in WHOIS"
+
+  # Marker for fields redacted by RDAP provider (e.g., due to GDPR)
+  @rdap_redacted "Redacted by provider"
+
   @doc """
   Performs a WHOIS/RDAP lookup for the given domain.
 
@@ -214,6 +105,10 @@ defmodule DomainTwistex.Utils.Whois do
       * :updated_date - Last update date (optional)
       * :status - List of domain status codes (optional)
       * :nameservers - List of nameservers (optional)
+      * :registrant - Registrant contact info map (optional)
+      * :admin_contact - Admin contact info map (optional)
+      * :tech_contact - Technical contact info map (optional)
+      * :abuse_contact - Abuse contact info map (optional)
   """
   def lookup(domain) do
     case try_rdap_lookup(domain) do
@@ -312,8 +207,12 @@ defmodule DomainTwistex.Utils.Whois do
               creation_date: parse_whois_field(raw_data, "Creation Date"),
               expiration_date: parse_whois_field(raw_data, "Expir"),
               updated_date: parse_whois_field(raw_data, "Updated Date"),
-              status: nil,
-              nameservers: nil
+              status: parse_whois_status(raw_data),
+              nameservers: parse_whois_nameservers(raw_data),
+              registrant: @whois_not_available,
+              admin_contact: @whois_not_available,
+              tech_contact: @whois_not_available,
+              abuse_contact: @whois_not_available
             }}
           {:error, reason} ->
             {:error, reason}
@@ -332,6 +231,56 @@ defmodule DomainTwistex.Utils.Whois do
         end
       end
     end)
+  end
+
+  defp parse_whois_status(raw_data) do
+    statuses =
+      raw_data
+      |> String.split("\n")
+      |> Enum.filter(fn line ->
+        line_lower = String.downcase(line)
+        String.contains?(line_lower, "status:") or String.contains?(line_lower, "domain status:")
+      end)
+      |> Enum.map(fn line ->
+        case String.split(line, ":", parts: 2) do
+          [_, value] ->
+            value
+            |> String.trim()
+            |> String.split(" ")
+            |> List.first()
+
+          _ ->
+            nil
+        end
+      end)
+      |> Enum.filter(&(&1 != nil and &1 != ""))
+
+    case statuses do
+      [] -> nil
+      list -> Enum.uniq(list)
+    end
+  end
+
+  defp parse_whois_nameservers(raw_data) do
+    nameservers =
+      raw_data
+      |> String.split("\n")
+      |> Enum.filter(fn line ->
+        line_lower = String.downcase(line)
+        String.contains?(line_lower, "name server:") or String.contains?(line_lower, "nserver:")
+      end)
+      |> Enum.map(fn line ->
+        case String.split(line, ":", parts: 2) do
+          [_, value] -> String.trim(value) |> String.downcase()
+          _ -> nil
+        end
+      end)
+      |> Enum.filter(&(&1 != nil and &1 != ""))
+
+    case nameservers do
+      [] -> nil
+      list -> Enum.uniq(list)
+    end
   end
 
   defp tcp_whois_query(server, domain) do
@@ -362,6 +311,8 @@ defmodule DomainTwistex.Utils.Whois do
   end
 
   defp parse_rdap_response(domain, rdap_data, raw_data) do
+    entities = Map.get(rdap_data, "entities", [])
+
     %{
       domain: domain,
       source: "rdap",
@@ -372,7 +323,11 @@ defmodule DomainTwistex.Utils.Whois do
       expiration_date: extract_rdap_event_date(rdap_data, "expiration"),
       updated_date: extract_rdap_event_date(rdap_data, "last changed"),
       status: extract_rdap_status(rdap_data),
-      nameservers: extract_rdap_nameservers(rdap_data)
+      nameservers: extract_rdap_nameservers(rdap_data),
+      registrant: extract_entity_by_role(entities, "registrant"),
+      admin_contact: extract_entity_by_role(entities, "administrative"),
+      tech_contact: extract_entity_by_role(entities, "technical"),
+      abuse_contact: extract_entity_by_role(entities, "abuse")
     }
   end
 
@@ -401,6 +356,191 @@ defmodule DomainTwistex.Utils.Whois do
     end
   end
   defp extract_vcard_name(_), do: nil
+
+  # Extract full contact info from an entity by role
+  # Searches both top-level entities and nested entities (e.g., abuse contact nested in registrar)
+  defp extract_entity_by_role(entities, role) do
+    # First try to find at top level
+    entity = Enum.find(entities, fn entity ->
+      roles = Map.get(entity, "roles", [])
+      role in roles
+    end)
+
+    case entity do
+      nil ->
+        # Search nested entities (common for abuse contacts nested in registrar)
+        case find_nested_entity(entities, role) do
+          nil -> @rdap_redacted
+          result -> result
+        end
+
+      entity ->
+        extract_vcard_contact(entity)
+    end
+  end
+
+  # Search for entities nested within other entities
+  defp find_nested_entity(entities, role) do
+    Enum.find_value(entities, fn entity ->
+      nested = Map.get(entity, "entities", [])
+
+      nested_entity = Enum.find(nested, fn nested_entity ->
+        roles = Map.get(nested_entity, "roles", [])
+        role in roles
+      end)
+
+      case nested_entity do
+        nil -> nil
+        found -> extract_vcard_contact(found)
+      end
+    end)
+  end
+
+  # Extract comprehensive contact info from vCard
+  defp extract_vcard_contact(entity) do
+    vcard_array = Map.get(entity, "vcardArray", [])
+
+    case vcard_array do
+      ["vcard", properties] when is_list(properties) ->
+        contact = %{
+          name: extract_vcard_property(properties, "fn") |> normalize_empty(),
+          organization: extract_vcard_property(properties, "org") |> normalize_empty(),
+          email: extract_vcard_property(properties, "email") |> normalize_empty(),
+          phone: extract_vcard_phone(properties) |> normalize_empty(),
+          fax: extract_vcard_fax(properties) |> normalize_empty(),
+          address: extract_vcard_address(properties),
+          country: extract_vcard_country(properties)
+        }
+
+        # Consider contact redacted if primary identifying fields are missing
+        # (name, organization, and address all nil means the contact is essentially redacted)
+        primary_fields = [contact.name, contact.organization, contact.address]
+        has_primary_data = Enum.any?(primary_fields, &(&1 != nil))
+
+        if has_primary_data do
+          contact
+        else
+          @rdap_redacted
+        end
+
+      _ ->
+        @rdap_redacted
+    end
+  end
+
+  # Convert empty strings to nil
+  defp normalize_empty(""), do: nil
+  defp normalize_empty(value), do: value
+
+  # Extract a simple property value from vCard
+  defp extract_vcard_property(properties, prop_name) do
+    Enum.find_value(properties, fn prop ->
+      case prop do
+        [^prop_name, _params, _type, value] when is_binary(value) ->
+          String.trim(value)
+
+        [^prop_name, _params, _type, values] when is_list(values) ->
+          # For org, it might be a list
+          values
+          |> Enum.filter(&is_binary/1)
+          |> Enum.join(", ")
+          |> case do
+            "" -> nil
+            str -> String.trim(str)
+          end
+
+        _ ->
+          nil
+      end
+    end)
+  end
+
+  # Extract phone number, handling tel: URI format
+  defp extract_vcard_phone(properties) do
+    Enum.find_value(properties, fn prop ->
+      case prop do
+        ["tel", params, _type, value] when is_binary(value) ->
+          # Skip fax numbers
+          if is_fax_type?(params) do
+            nil
+          else
+            clean_phone_value(value)
+          end
+
+        _ ->
+          nil
+      end
+    end)
+  end
+
+  # Clean phone value, removing tel: prefix if present
+  defp clean_phone_value(value) do
+    value
+    |> String.trim()
+    |> String.replace_prefix("tel:", "")
+  end
+
+  # Extract fax specifically (tel with type=fax)
+  defp extract_vcard_fax(properties) do
+    Enum.find_value(properties, fn prop ->
+      case prop do
+        ["tel", params, _type, value] when is_binary(value) ->
+          if is_fax_type?(params), do: clean_phone_value(value), else: nil
+
+        _ ->
+          nil
+      end
+    end)
+  end
+
+  defp is_fax_type?(params) when is_map(params) do
+    case Map.get(params, "type") do
+      types when is_list(types) -> "fax" in Enum.map(types, &String.downcase/1)
+      type when is_binary(type) -> String.downcase(type) == "fax"
+      _ -> false
+    end
+  end
+  defp is_fax_type?(_), do: false
+
+  # Extract full address from vCard adr property
+  defp extract_vcard_address(properties) do
+    Enum.find_value(properties, fn prop ->
+      case prop do
+        ["adr", _params, _type, components] when is_list(components) ->
+          # vCard adr: [PO Box, Extended, Street, City, Region, Postal, Country]
+          address_parts =
+            components
+            |> Enum.filter(&is_binary/1)
+            |> Enum.map(&String.trim/1)
+            |> Enum.filter(&(&1 != ""))
+
+          case address_parts do
+            [] -> nil
+            parts -> Enum.join(parts, ", ")
+          end
+
+        _ ->
+          nil
+      end
+    end)
+  end
+
+  # Extract country from vCard (last element of adr or from country param)
+  defp extract_vcard_country(properties) do
+    Enum.find_value(properties, fn prop ->
+      case prop do
+        ["adr", _params, _type, components] when is_list(components) ->
+          # Country is typically the 7th element (index 6) in adr
+          case Enum.at(components, 6) do
+            country when is_binary(country) and country != "" -> String.trim(country)
+            _ -> nil
+          end
+
+        _ ->
+          nil
+      end
+    end)
+  end
 
   defp extract_rdap_event_date(rdap_data, event_type) do
     events = Map.get(rdap_data, "events", [])
