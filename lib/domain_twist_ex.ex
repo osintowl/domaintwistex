@@ -12,45 +12,40 @@ defmodule DomainTwistex.Twist do
   @doc """
   Analyzes a domain by generating permutations and checking them concurrently.
 
-  This function combines permutation generation with comprehensive domain validation,
-  running checks in parallel for improved performance. It handles DNS resolution,
-  server checking, and MX record validation for each permutation.
+  Generates all permutations for the given domain, then resolves each one with
+  parallel DNS, WHOIS, and server checks. Filters out the original domain and
+  wildcard-only results (wildcard + no public IPs).
 
   ## Parameters
     * domain - String representing the base domain to analyze (e.g., "example.com")
     * opts - Keyword list of options:
-      * max_concurrency: Maximum number of concurrent tasks (default: System.schedulers_online() * 2)
-      * timeout: Timeout in milliseconds for each task (default: 15000)
-      * ordered: Whether to maintain permutation order in results (default: false)
+      * :max_concurrency - Maximum number of concurrent tasks (default: System.schedulers_online() * 2)
+      * :timeout - Timeout in milliseconds for each task (default: 15000)
+      * :ordered - Whether to maintain permutation order in results (default: false)
+      * :whois - Enable WHOIS/RDAP lookups (default: true)
 
   ## Returns
-    * List of maps, each containing validated domain information:
-      * :kind - Type of permutation (e.g., "Homoglyph", "Bitsquatting")
-      * :fqdn - Fully qualified domain name
-      * :tld - Top-level domain
-      * :ip_addresses - List of resolved IP addresses
-      * :mx_records - List of MX record information
-      * :resolvable - Boolean indicating if domain resolves
-      * Additional DNS and server information
+    A map with the following keys:
+      * :domain - The original domain string
+      * :original - Resolved baseline data for the original domain (without fuzzy scores)
+      * :permutations - List of resolvable permutation results (excluding wildcards with no public IPs)
+      * :stats - Map with :total (permutations generated) and :resolvable (permutations that resolved)
 
   ## Examples
       ```elixir
-      # Basic usage
-      iex> DomainTwistex.Twist.analyze_domain("google.com")
-      [
-        %{
-          kind: "Tld",
-          fqdn: "google.co.uz",
-          ip_addresses: ["173.194.219.99", "173.194.219.103"],
-          mx_records: [%{priority: 0, server: "."}],
-          resolvable: true,
-          tld: "co.uz"
-        },
-        # ... additional results
-      ]
+      iex> DomainTwistex.Twist.analyze_domain("example.com")
+      %{
+        domain: "example.com",
+        original: %{fqdn: "example.com", resolvable: true, ...},
+        permutations: [
+          %{kind: "Tld", fqdn: "example.co.uk", ip_addresses: [...], ...},
+          ...
+        ],
+        stats: %{total: 9541, resolvable: 42}
+      }
 
       # With custom options
-      iex> DomainTwistex.Twist.analyze_domain("example.com", max_concurrency: 50, timeout: 10_000)
+      iex> DomainTwistex.Twist.analyze_domain("example.com", max_concurrency: 50, whois: true)
       ```
 
   ## Performance Considerations
@@ -116,7 +111,7 @@ defmodule DomainTwistex.Twist do
   end
 
   @doc """
-  Filters domain analysis results to return only those with valid MX records.
+  Filters domain analysis results to return only permutations with valid MX records.
 
   This function is particularly useful for identifying potentially malicious domains
   that are set up for email operations, which could be used for phishing attacks.
@@ -126,28 +121,19 @@ defmodule DomainTwistex.Twist do
     * opts - Keyword list of options (same as analyze_domain/2)
 
   ## Returns
-    * List of maps containing only domains with valid MX records
-    * Empty list if no domains with MX records are found or on error
+    A map with the same shape as analyze_domain/2, but permutations filtered to
+    only those with MX records. Stats includes :mx_count.
 
   ## Examples
       ```elixir
-      iex> DomainTwistex.Twist.get_live_mx_domains("google.com", max_concurrency: 50)
-      [
-        %{
-          kind: "Tld",
-          mx_records: [%{priority: 0, server: "smtp.google.com"}],
-          fqdn: "google.lt",
-          resolvable: true,
-          ip_addresses: ["172.217.215.94"],
-          tld: "lt"
-        },
-        # ... additional results
-      ]
+      iex> DomainTwistex.Twist.get_live_mx_domains("google.com")
+      %{
+        domain: "google.com",
+        original: %{...},
+        permutations: [%{kind: "Tld", mx_records: [%{priority: 0, server: "smtp.google.com"}], ...}],
+        stats: %{total: 9541, resolvable: 42, mx_count: 12}
+      }
       ```
-
-  ## Error Handling
-    * Returns an empty list if any errors occur during processing
-    * Logs errors to console for debugging purposes
   """
   def get_live_mx_domains(domain, opts \\ []) do
     try do
