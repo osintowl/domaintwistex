@@ -1,20 +1,4 @@
 defmodule DomainTwistex.Utils do
-  version = Mix.Project.config()[:version]
-  # use Rustler, otp_app: :domaintwistex, crate: "domaintwistex"
-  use RustlerPrecompiled,
-    otp_app: :domaintwistex,
-    crate: "domaintwistex", 
-    version: version,
-    base_url: "https://github.com/osintowl/domaintwistex/releases/download/v#{version}",
-    targets: ~w(
-      aarch64-apple-darwin
-      aarch64-unknown-linux-gnu
-      x86_64-apple-darwin
-      x86_64-pc-windows-msvc
-      x86_64-pc-windows-gnu
-      x86_64-unknown-linux-gnu
-    ),
-    force_build: System.get_env("DOMAINTWISTEX_BUILD") in ["1", "true"] 
   alias DomainTwistex.DNS
   alias DomainTwistex.SPF
   alias DomainTwistex.Utils.Whois
@@ -22,32 +6,27 @@ defmodule DomainTwistex.Utils do
 
   @moduledoc """
   DomainTwistEx provides domain permutation generation and validation utilities.
-  Combines Rust NIFs for permutation generation with domain validation and server checking capabilities.
-
-  ## Prerequisites
-  - Rust and Cargo must be installed on your system
-    Install from https://rustup.rs/
-
-  If you see a `:enoent` error during compilation, ensure Rust/Cargo is installed
-  and available in your PATH.
+  Uses pure Elixir permutation generation with domain validation and server checking capabilities.
   """
 
-  @doc group: "1. Native Implemented Functions (RUST)"
+  @doc group: "1. Domain Permutation Generation"
   @doc """
-  Generates domain permutations using the Twistrs Rust library.
+  Generates domain permutations using the pure Elixir Permutate module.
 
-  This function is implemented as a Native Implemented Function (NIF) that interfaces 
-  with the Twistrs Rust library for efficient domain permutation generation.
-
-  ## Attribution
-  This NIF wraps functionality from the Twistrs library:
-  https://github.com/haveibeensquatted/twistrs
+  Produces 18 permutation types: Addition, Bitsquatting, Hyphenation,
+  HyphenationTldBoundary, Insertion, Omission, Repetition, Replacement,
+  Subdomain, Transposition, VowelSwap, VowelShuffle, DoubleVowelInsertion,
+  Keyword, Tld, FauxTld, Mapped, and Homoglyph.
 
   ## Parameters
     * domain - String representing the domain to generate permutations for
+    * opts - Keyword list of options:
+      * :faux_tld - include FauxTld permutations (default: false, adds ~14K entries)
+      * :double_vowel - include DoubleVowelInsertion (default: true)
+      * :vowel_shuffle - include VowelShuffle (default: true)
 
   ## Returns
-    List of generated domain permutation strings
+    List of generated domain permutation maps with :fqdn, :tld, and :kind keys
 
   ## Examples
       ```
@@ -59,7 +38,14 @@ defmodule DomainTwistex.Utils do
       ]
       ```
   """
-  def generate_permutations(_domain), do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate generate_permutations(domain), to: DomainTwistex.Permutate
+
+  @doc """
+  Generates domain permutations with options.
+
+  See `generate_permutations/1` for details.
+  """
+  defdelegate generate_permutations(domain, opts), to: DomainTwistex.Permutate
 
   @doc """
   Validates and resolves domain information while checking for TLD-related issues.
@@ -177,13 +163,24 @@ defmodule DomainTwistex.Utils do
     # A-record-first approach (like dnstwist) - fast, finds active domains
     case validate_domain_resolution(permutation.fqdn, permutation.tld) do
       {:ok, %{ips: ips, public_ips: public_ips, internal_ips: internal_ips, flags: ip_flags}} ->
-        # Domain resolves - collect additional DNS data (best-effort)
-        mx_records = safe_dns_query(fn -> DNS.get_mx_records(permutation.fqdn) end, [])
-        txt_records = safe_dns_query(fn -> DNS.get_txt_records(permutation.fqdn) end, [])
+        # Run all independent DNS lookups concurrently
+        dns_tasks = [
+          Task.async(fn -> {:mx, safe_dns_query(fn -> DNS.get_mx_records(permutation.fqdn) end, [])} end),
+          Task.async(fn -> {:txt, safe_dns_query(fn -> DNS.get_txt_records(permutation.fqdn) end, [])} end),
+          Task.async(fn -> {:dmarc, safe_dns_query(fn -> DNS.check_dmarc(permutation.fqdn) end, %{})} end),
+          Task.async(fn -> {:ns, safe_dns_query(fn -> DNS.get_nameservers(permutation.fqdn) end, [])} end),
+          Task.async(fn -> {:wildcard, safe_dns_query(fn -> DNS.has_wildcard(permutation.fqdn) end, false)} end)
+        ]
+
+        dns_results = Task.await_many(dns_tasks, 10_000)
+        dns_map = Map.new(dns_results)
+
+        mx_records = Map.get(dns_map, :mx, [])
+        txt_records = Map.get(dns_map, :txt, [])
+        dmarc = Map.get(dns_map, :dmarc, %{})
+        nameservers = Map.get(dns_map, :ns, [])
+        wildcard = Map.get(dns_map, :wildcard, false)
         spf_records = SPF.parse_txt_records({:ok, txt_records})
-        dmarc = safe_dns_query(fn -> DNS.check_dmarc(permutation.fqdn) end, %{})
-        nameservers = safe_dns_query(fn -> DNS.get_nameservers(permutation.fqdn) end, [])
-        wildcard = safe_dns_query(fn -> DNS.has_wildcard(permutation.fqdn) end, false)
 
         # Skip HTTP check if no public IPs - don't connect to localhost/private ranges
         server_response = if public_ips != [] do

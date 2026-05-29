@@ -2,8 +2,8 @@ defmodule DomainTwistex.MixProject do
   use Mix.Project
 
 
-  @version "0.7.0"
-  @force_build? System.get_env("DOMAINTWISTEX_BUILD") in ["1", "true"]  
+  @version "0.8.0"
+
   def project do
     [
       app: :domaintwistex,
@@ -11,23 +11,19 @@ defmodule DomainTwistex.MixProject do
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      description: "Domain twisting library using twistrs",
+      description: "Domain twisting library for detecting typosquatting and domain abuse",
       package: package()
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger]
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:rustler_precompiled, "~> 0.8.4"},
-      {:rustler, "~> 0.37", optional: not @force_build?},
       {:req, "~> 0.5.16"},
       {:ex_doc, "~> 0.39", only: :dev, runtime: false}
     ]
@@ -38,12 +34,11 @@ defmodule DomainTwistex.MixProject do
       name: "domaintwistex",
       licenses: ["BSD-3-Clause"],
       links: %{"GitHub" => "https://github.com/osintowl/domaintwistex"},
-        files: [
+      files: [
         "lib",
-        "native",
-        "checksum-*.exs",
+        "priv",
         "mix.exs"
-      ],
+      ]
     ]
   end
 end

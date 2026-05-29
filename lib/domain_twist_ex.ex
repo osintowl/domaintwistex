@@ -85,21 +85,42 @@ defmodule DomainTwistex.Twist do
 
     check_opts = [whois: opts[:whois], original_content: original_content]
 
-    domain
-    |> Utils.generate_permutations()
-    |> Task.async_stream(
-      fn permutation -> Utils.check_domain(permutation, domain, check_opts) end,
-      ordered: opts[:ordered],
-      max_concurrency: opts[:max_concurrency],
-      timeout: opts[:timeout],
-      on_timeout: :kill_task
-    )
-    |> Stream.filter(fn
-      {:ok, {:ok, result}} -> result.fqdn != domain
-      _ -> false
-    end)
-    |> Stream.map(fn {:ok, {:ok, result}} -> result end)
-    |> Enum.into([])
+    # Resolve original domain and store its baseline data
+    original = resolve_original(domain, check_opts)
+
+    permutations =
+      domain
+      |> Utils.generate_permutations()
+      |> Task.async_stream(
+        fn permutation -> Utils.check_domain(permutation, domain, check_opts) end,
+        ordered: opts[:ordered],
+        max_concurrency: opts[:max_concurrency],
+        timeout: opts[:timeout],
+        on_timeout: :kill_task
+      )
+      |> Stream.filter(fn
+        {:ok, {:ok, result}} ->
+          result.fqdn != domain and not (result.wildcard == true and result.public_ips == [])
+        _ -> false
+      end)
+      |> Stream.map(fn {:ok, {:ok, result}} -> result end)
+      |> Enum.into([])
+
+    %{
+      domain: domain,
+      original: original,
+      permutations: permutations,
+      stats: %{permutation_count: length(permutations)}
+    }
+  end
+
+  defp resolve_original(domain, check_opts) do
+    permutation = %{fqdn: domain, tld: domain |> String.split(".", parts: 2) |> List.last()}
+
+    case Utils.check_domain(permutation, domain, check_opts) do
+      {:ok, result} -> Map.delete(result, :fuzzy)
+      {:error, _} -> %{fqdn: domain, resolvable: false}
+    end
   end
 
   @doc """
@@ -138,11 +159,11 @@ defmodule DomainTwistex.Twist do
   """
   def get_live_mx_domains(domain, opts \\ []) do
     try do
-      domain
-      |> analyze_domain(opts)
-      |> Enum.filter(&(not Enum.empty?(&1.mx_records)))
+      result = analyze_domain(domain, opts)
+      mx_only = Enum.filter(result.permutations, &(not Enum.empty?(&1.mx_records)))
+      %{result | permutations: mx_only, stats: Map.put(result.stats, :mx_count, length(mx_only))}
     rescue
-      _e -> []
+      _e -> %{domain: domain, original: nil, permutations: [], stats: %{}}
     end
   end
 
@@ -240,7 +261,8 @@ defmodule DomainTwistex.Twist do
       on_timeout: :kill_task
     )
     |> Stream.filter(fn
-      {:ok, {:ok, result}} -> result.fqdn != domain
+      {:ok, {:ok, result}} ->
+        result.fqdn != domain and not (result.wildcard == true and result.public_ips == [])
       _ -> false
     end)
     |> Stream.map(fn {:ok, {:ok, result}} -> result end)
