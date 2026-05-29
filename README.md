@@ -1,13 +1,12 @@
 # DomainTwistex
 
-DomainTwistex is a pure Elixir library for domain name permutation generation and typosquatting detection. It generates domain permutations, resolves them concurrently, and enriches results with DNS, WHOIS, and content similarity data.
+DomainTwistex is a pure Elixir library for domain name permutation generation and typosquatting detection. It generates domain permutations, resolves them concurrently, and enriches results with DNS and WHOIS data.
 
 ## Features
 
 - **18 permutation algorithms** — Addition, Bitsquatting, Hyphenation, Insertion, Omission, Repetition, Replacement, Subdomain, Transposition, VowelSwap, VowelShuffle, DoubleVowelInsertion, Keyword, TLD, FauxTLD, Mapped, and Homoglyph
 - **Concurrent DNS validation** — parallel A/CNAME/MX/TXT/DMARC/NS/wildcard lookups
 - **WHOIS/RDAP enrichment** — optional registrar and date lookups via RDAP-first, WHOIS-fallback
-- **Content similarity** — shingle-based Jaccard similarity for phishing page detection
 - **Fuzzy matching scores** — Jaro-Winkler, Levenshtein, character diff, keyboard proximity
 - **SPF record parsing** — with provider categorization (transactional email, marketing, etc.)
 - **Distributed scanning** — split work across Erlang nodes
@@ -20,7 +19,7 @@ Add `domaintwistex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:domaintwistex, "~> 0.8.0"}
+    {:domaintwistex, "~> 0.9.0"}
   ]
 end
 ```
@@ -59,15 +58,14 @@ result = DomainTwistex.Twist.analyze_domain("example.com")
     %{kind: "Homoglyph", fqdn: "examp1e.com", ip_addresses: [...], ...},
     ...
   ],
-  stats: %{permutation_count: 523}
+  stats: %{total: 9541, resolvable: 42}
 }
 
 # With options
 result = DomainTwistex.Twist.analyze_domain("example.com",
   max_concurrency: 50,
   timeout: 10_000,
-  whois: true,
-  content_hash: true
+  whois: true
 )
 ```
 
@@ -76,7 +74,7 @@ result = DomainTwistex.Twist.analyze_domain("example.com",
 ```elixir
 # Returns only permutations with MX records (potential phishing targets)
 result = DomainTwistex.Twist.get_live_mx_domains("example.com")
-# => %{domain: "example.com", original: %{...}, permutations: [...], stats: %{mx_count: 12, permutation_count: 523}}
+# => %{domain: "example.com", original: %{...}, permutations: [...], stats: %{mx_count: 12, total: 9541, resolvable: 42}}
 ```
 
 ### Permutation Generation (No Resolution)
@@ -114,7 +112,6 @@ mix twist --format json -o results.json example.com
 | `timeout` | `15000` | Timeout per domain check (ms) |
 | `ordered` | `false` | Maintain permutation order in results |
 | `whois` | `true` | Enable WHOIS/RDAP lookups (slower) |
-| `content_hash` | `false` | Enable content similarity checking (slower) |
 
 ### Permutation Options (for `generate_permutations/2`)
 
@@ -146,7 +143,6 @@ Each permutation result includes:
 | `wildcard` | boolean | Whether wildcard DNS is detected |
 | `server_response` | map | HTTP HEAD response (status, server, headers) |
 | `whois` | map or nil | WHOIS data (registrar, dates) if enabled |
-| `content_hash` | map or nil | Content similarity score if enabled |
 | `fuzzy` | map | Fuzzy matching scores (jaro_winkler, levenshtein, etc.) |
 
 Results where `wildcard: true` and `public_ips: []` are automatically filtered out.
@@ -182,7 +178,6 @@ Results where `wildcard: true` and `public_ips: []` are automatically filtered o
 - `DomainTwistex.DNS` — DNS resolution (A, CNAME, MX, TXT, NS, DMARC, wildcard)
 - `DomainTwistex.SPF` — SPF record parser with provider categorization
 - `DomainTwistex.Utils.Whois` — RDAP/WHOIS domain lookups
-- `DomainTwistex.Utils.ContentSimilarity` — Content-based phishing detection
 
 ## License
 
