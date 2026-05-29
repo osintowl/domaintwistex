@@ -11,7 +11,7 @@ defmodule DomainTwistex.MixProject do
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      description: "Domain twisting library for detecting typosquatting and domain abuse",
+      description: "Pure Elixir domain permutation and typosquatting detection engine. Generates 18 permutation types, resolves concurrently with DNS/WHOIS enrichment, and filters suspicious domains.",
       package: package()
     ]
   end
