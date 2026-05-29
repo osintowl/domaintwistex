@@ -11,7 +11,6 @@ defmodule Mix.Tasks.Twist do
       -c, --concurrency NUM   Number of concurrent checks (default: CPU * 2)
       -t, --timeout MS        Timeout per domain in ms (default: 15000)
       -w, --whois             Enable WHOIS/RDAP lookups (slower)
-      --content               Enable content similarity checking (slower)
       --mx-only               Only show domains with MX records
       -f, --format FORMAT     Output format: table, json, csv (default: table)
       -o, --output FILE       Write results to file
@@ -24,9 +23,6 @@ defmodule Mix.Tasks.Twist do
   """
 
   use Mix.Task
-
-  alias DomainTwistex.Utils
-  alias DomainTwistex.Utils.ContentSimilarity
 
   @shortdoc "Scan domain permutations"
 
@@ -44,7 +40,6 @@ defmodule Mix.Tasks.Twist do
           concurrency: :integer,
           timeout: :integer,
           whois: :boolean,
-          content: :boolean,
           format: :string,
           output: :string,
           mx_only: :boolean
@@ -76,7 +71,6 @@ defmodule Mix.Tasks.Twist do
     concurrency = Keyword.get(opts, :concurrency, @default_concurrency)
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     include_whois = Keyword.get(opts, :whois, false)
-    include_content = Keyword.get(opts, :content, false)
     format = Keyword.get(opts, :format, "table")
     output_file = Keyword.get(opts, :output)
     mx_only = Keyword.get(opts, :mx_only, false)
@@ -87,99 +81,36 @@ defmodule Mix.Tasks.Twist do
     IO.puts("Concurrency: #{concurrency}")
     IO.puts("Timeout: #{timeout}ms")
     IO.puts("WHOIS: #{if include_whois, do: "enabled", else: "disabled"}")
-    IO.puts("Content Hash: #{if include_content, do: "enabled", else: "disabled"}")
     IO.puts(String.duplicate("=", 50))
 
-    # Generate permutations
-    IO.write("\nGenerating permutations... ")
-    start_gen = System.monotonic_time(:millisecond)
-    permutations = Utils.generate_permutations(domain)
-    gen_time = System.monotonic_time(:millisecond) - start_gen
-    total = length(permutations)
-    IO.puts("#{IO.ANSI.green()}#{total}#{IO.ANSI.reset()} permutations (#{gen_time}ms)")
+    results = DomainTwistex.Twist.analyze_domain(domain,
+      max_concurrency: concurrency,
+      timeout: timeout,
+      whois: include_whois
+    )
 
-    # Fetch original content if needed
-    original_content =
-      if include_content do
-        IO.write("Fetching original content... ")
-        case ContentSimilarity.fetch_original(domain) do
-          {:ok, data} ->
-            IO.puts("#{IO.ANSI.green()}done#{IO.ANSI.reset()}")
-            data
-          {:error, reason} ->
-            IO.puts("#{IO.ANSI.yellow()}failed: #{inspect(reason)}#{IO.ANSI.reset()}")
-            nil
-        end
-      else
-        nil
-      end
+    permutations = if mx_only do
+      Enum.filter(results.permutations, &(not Enum.empty?(&1.mx_records)))
+    else
+      Enum.filter(results.permutations, & &1.resolvable)
+    end
 
     IO.puts("\nScanning domains...\n")
-    start_time = System.monotonic_time(:millisecond)
-
-    check_opts = [whois: include_whois, original_content: original_content]
-
-    # Collect results with progress
-    results =
-      permutations
-      |> Stream.with_index(1)
-      |> Task.async_stream(
-        fn {permutation, idx} ->
-          result = Utils.check_domain(permutation, domain, check_opts)
-
-          # Print progress
-          elapsed = System.monotonic_time(:millisecond) - start_time
-          rate = if elapsed > 0, do: Float.round(idx / (elapsed / 1000), 1), else: 0
-
-          case result do
-            {:ok, %{resolvable: true} = r} ->
-              IO.puts("\r\e[K[+] #{r.fqdn} -> #{Enum.join(r.ip_addresses, ", ")}")
-              IO.write("    #{idx}/#{total} (#{rate}/s)")
-            _ ->
-              if rem(idx, 25) == 0 do
-                IO.write("\r\e[K    #{idx}/#{total} (#{rate}/s)")
-              end
-          end
-
-          {idx, result}
-        end,
-        ordered: false,
-        max_concurrency: concurrency,
-        timeout: timeout,
-        on_timeout: :kill_task
-      )
-      |> Stream.filter(fn
-        {:ok, {_idx, {:ok, result}}} ->
-          cond do
-            result.fqdn == domain -> false
-            mx_only -> result.resolvable and length(result.mx_records) > 0
-            true -> result.resolvable
-          end
-        _ -> false
-      end)
-      |> Stream.map(fn {:ok, {_idx, {:ok, result}}} -> result end)
-      |> Enum.to_list()
-
-    # Final stats
-    elapsed = System.monotonic_time(:millisecond) - start_time
 
     IO.puts("")
     IO.puts(String.duplicate("=", 50))
     IO.puts("#{IO.ANSI.green()}Scan complete!#{IO.ANSI.reset()}")
-    IO.puts("Total checked: #{total}")
-    IO.puts("Resolvable found: #{length(results)}")
-    IO.puts("Time: #{Float.round(elapsed / 1000, 2)}s")
-    rate = if elapsed > 0, do: Float.round(total / (elapsed / 1000), 1), else: 0
-    IO.puts("Rate: #{rate} domains/s")
+    IO.puts("Total permutations: #{results.stats.total}")
+    IO.puts("Resolvable found: #{results.stats.resolvable}")
     IO.puts(String.duplicate("=", 50))
 
-    if length(results) > 0 do
+    if length(permutations) > 0 do
       IO.puts("\n#{IO.ANSI.cyan()}Results:#{IO.ANSI.reset()}\n")
 
       case format do
-        "json" -> output_json(results, output_file)
-        "csv" -> output_csv(results, output_file)
-        _ -> output_table(results, output_file)
+        "json" -> output_json(permutations, output_file)
+        "csv" -> output_csv(permutations, output_file)
+        _ -> output_table(permutations, output_file)
       end
     else
       IO.puts("\nNo resolvable domains found.")

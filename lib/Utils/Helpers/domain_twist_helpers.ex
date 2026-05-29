@@ -2,7 +2,6 @@ defmodule DomainTwistex.Utils do
   alias DomainTwistex.DNS
   alias DomainTwistex.SPF
   alias DomainTwistex.Utils.Whois
-  alias DomainTwistex.Utils.ContentSimilarity
 
   @moduledoc """
   DomainTwistEx provides domain permutation generation and validation utilities.
@@ -158,7 +157,6 @@ defmodule DomainTwistex.Utils do
   """
   def check_domain(permutation, domain, opts \\ []) do
     include_whois = Keyword.get(opts, :whois, false)
-    original_content = Keyword.get(opts, :original_content, nil)
 
     # A-record-first approach (like dnstwist) - fast, finds active domains
     case validate_domain_resolution(permutation.fqdn, permutation.tld) do
@@ -216,23 +214,6 @@ defmodule DomainTwistex.Utils do
           nil
         end
 
-        # Optional content similarity (like dnstwist --lsh flag)
-        # Skip if no public IPs - don't fetch from localhost/private ranges
-        content_hash = if original_content && public_ips != [] do
-          try do
-            case ContentSimilarity.compare(permutation.fqdn, original_content) do
-              {:ok, result} -> result
-              _ -> nil
-            end
-          rescue
-            _ -> nil
-          catch
-            _, _ -> nil
-          end
-        else
-          nil
-        end
-
         # Fuzzy matching scores
         fuzzy = try do
           calculate_fuzzy_scores(domain, permutation.fqdn)
@@ -257,7 +238,6 @@ defmodule DomainTwistex.Utils do
            nameservers: nameservers,
            wildcard: wildcard,
            whois: whois_data,
-           content_hash: content_hash,
            fuzzy: fuzzy
          })}
 

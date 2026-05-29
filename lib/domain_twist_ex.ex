@@ -59,38 +59,27 @@ defmodule DomainTwistex.Twist do
     * Setting ordered: true may impact performance for large result sets
   """
   def analyze_domain(domain, opts \\ []) do
-    alias DomainTwistex.Utils.ContentSimilarity
-
     opts =
       Keyword.merge(
         [
           max_concurrency: System.schedulers_online() * 2,
           timeout: 15_000,
           ordered: false,
-          whois: true,
-          content_hash: false
+          whois: true
         ],
         opts
       )
 
-    # Fetch original content if content hashing enabled
-    original_content = if opts[:content_hash] do
-      case ContentSimilarity.fetch_original(domain) do
-        {:ok, data} -> data
-        {:error, _} -> nil
-      end
-    else
-      nil
-    end
-
-    check_opts = [whois: opts[:whois], original_content: original_content]
+    check_opts = [whois: opts[:whois]]
 
     # Resolve original domain and store its baseline data
     original = resolve_original(domain, check_opts)
 
+    all_permutations = Utils.generate_permutations(domain)
+    total_generated = length(all_permutations)
+
     permutations =
-      domain
-      |> Utils.generate_permutations()
+      all_permutations
       |> Task.async_stream(
         fn permutation -> Utils.check_domain(permutation, domain, check_opts) end,
         ordered: opts[:ordered],
@@ -110,7 +99,10 @@ defmodule DomainTwistex.Twist do
       domain: domain,
       original: original,
       permutations: permutations,
-      stats: %{permutation_count: length(permutations)}
+      stats: %{
+        total: total_generated,
+        resolvable: length(permutations)
+      }
     }
   end
 
@@ -226,31 +218,18 @@ defmodule DomainTwistex.Twist do
       results = DomainTwistex.Twist.analyze_chunk(my_chunk, "abbvie.com")
   """
   def analyze_chunk(permutations, domain, opts \\ []) do
-    alias DomainTwistex.Utils.ContentSimilarity
-
     opts =
       Keyword.merge(
         [
           max_concurrency: System.schedulers_online() * 2,
           timeout: 15_000,
           ordered: false,
-          whois: true,
-          content_hash: false
+          whois: true
         ],
         opts
       )
 
-    # Fetch original content if content hashing enabled
-    original_content = if opts[:content_hash] do
-      case ContentSimilarity.fetch_original(domain) do
-        {:ok, data} -> data
-        {:error, _} -> nil
-      end
-    else
-      nil
-    end
-
-    check_opts = [whois: opts[:whois], original_content: original_content]
+    check_opts = [whois: opts[:whois]]
 
     permutations
     |> Task.async_stream(
