@@ -5,7 +5,7 @@ DomainTwistex is a pure Elixir library for domain name permutation generation an
 ## Features
 
 - **18 permutation algorithms** — Addition, Bitsquatting, Hyphenation, Insertion, Omission, Repetition, Replacement, Subdomain, Transposition, VowelSwap, VowelShuffle, DoubleVowelInsertion, Keyword, TLD, FauxTLD, Mapped, and Homoglyph
-- **Concurrent DNS validation** — parallel A/CNAME/MX/TXT/DMARC/NS/wildcard lookups
+- **Concurrent DNS validation** — parallel A/CNAME/MX/TXT/DMARC/NS/wildcard lookups with EDNS0 and automatic TCP fallback for large responses
 - **WHOIS/RDAP enrichment** — optional registrar and date lookups via RDAP-first, WHOIS-fallback
 - **Fuzzy matching scores** — Jaro-Winkler, Levenshtein, character diff, keyboard proximity
 - **SPF record parsing** — with provider categorization (transactional email, marketing, etc.)
@@ -19,7 +19,7 @@ Add `domaintwistex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:domaintwistex, "~> 0.9.0"}
+    {:domaintwistex, "~> 0.9.1"}
   ]
 end
 ```

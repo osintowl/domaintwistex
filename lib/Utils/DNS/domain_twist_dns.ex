@@ -3,6 +3,9 @@ defmodule DomainTwistex.DNS do
   Provides pure DNS query operations for domain names.
   Handles various DNS record types including A, CNAME, MX, TXT, and NS records.
   All functions use Erlang's :inet_res module for DNS resolution.
+
+  TXT and DMARC lookups use EDNS0 with a 4096-byte UDP payload size and
+  automatically fall back to TCP for large or truncated responses.
   """
 
   @doc """
@@ -122,6 +125,9 @@ defmodule DomainTwistex.DNS do
   @doc """
   Retrieves TXT records for a domain.
 
+  Uses EDNS0 with a 4096-byte UDP payload size first. Falls back to TCP
+  for large responses that exceed the UDP limit (e.g., abbvie.com with 63 TXT records).
+
   ## Parameters
     * domain - String representing the domain to query
 
@@ -136,14 +142,19 @@ defmodule DomainTwistex.DNS do
       ```
   """
   def get_txt_records(domain) do
-    case :inet_res.resolve(String.to_charlist(domain), :in, :txt) do
-      {:ok, dns_response} ->
-        records =
-          dns_response
-          |> elem(3)
-          |> Enum.map(&(elem(&1, 6) |> List.to_string()))
+    case resolve(String.to_charlist(domain), :txt) do
+      {:ok, records} ->
+        txt_strings =
+          records
+          |> Enum.map(fn
+            # TXT records come as nested charlists: [['v','=','s','p','f','1',' ','-','a','l','l']]
+            [inner | _] = outer when is_list(inner) ->
+              outer |> List.flatten() |> to_string() |> String.trim()
+            flat when is_list(flat) ->
+              flat |> to_string() |> String.trim()
+          end)
 
-        {:ok, records}
+        {:ok, txt_strings}
 
       {:error, reason} ->
         {:error, "Failed to retrieve TXT records: #{inspect(reason)}"}
@@ -177,30 +188,71 @@ defmodule DomainTwistex.DNS do
 
   def check_dmarc(domain) do
     dmarc_domain = "_dmarc.#{domain}"
-    
-    case :inet_res.lookup(String.to_charlist(dmarc_domain), :in, :txt) do
-      [] -> 
-        {:ok, %{error: "No DMARC record found"}}
-      records when is_list(records) -> 
-        # Convert the charlist to string and handle the nested list structure
-        dmarc_records = records
-        |> Enum.map(fn [record] -> 
-          record |> to_string() |> String.trim()
-        end)
-        |> Enum.filter(&String.starts_with?(&1, "v=DMARC1"))
+
+    case resolve(String.to_charlist(dmarc_domain), :txt) do
+      {:ok, records} ->
+        dmarc_records =
+          records
+          |> Enum.map(fn
+            [inner | _] = outer when is_list(inner) ->
+              outer |> List.flatten() |> to_string() |> String.trim()
+            flat when is_list(flat) ->
+              flat |> to_string() |> String.trim()
+          end)
+          |> Enum.filter(&String.starts_with?(&1, "v=DMARC1"))
 
         case dmarc_records do
           [] -> {:ok, %{error: "No valid DMARC record found"}}
           [record | _] -> {:ok, parse_dmarc_policy(record)}
         end
-      {:error, reason} -> 
-        {:ok, %{error: "DNS lookup failed: #{reason}"}}
+
+      {:error, reason} ->
+        {:ok, %{error: "DNS lookup failed: #{inspect(reason)}"}}
     end
   end
 
   # Private Functions
 
   @doc false
+  defp resolve(name, type) do
+    # Try UDP first with EDNS0 and 4096-byte payload size (most responses fit)
+    case :inet_res.resolve(name, :in, type, edns: 0, udp_payload_size: 4096) do
+      {:ok, rec} ->
+        # Check for truncated response (TC flag set) — if so, retry over TCP
+        if truncated?(rec) do
+          tcp_fallback(name, type)
+        else
+          {:ok, extract_records(rec, type)}
+        end
+
+      {:error, _} ->
+        # UDP failed — fall back to TCP (needed for large responses like abbvie.com)
+        # Once https://github.com/erlang/otp/issues/11114 is fixed, inet_res will
+        # retry over TCP automatically on truncated responses and this fallback
+        # will only handle genuine UDP failures.
+        tcp_fallback(name, type)
+    end
+  end
+
+  defp tcp_fallback(name, type) do
+    case :inet_res.resolve(name, :in, type, usevc: true, edns: false) do
+      {:ok, rec} -> {:ok, extract_records(rec, type)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp truncated?(rec) do
+    header = elem(rec, 1)
+    :inet_dns.header(header, :tc)
+  end
+
+  defp extract_records(rec, type) do
+    rec
+    |> elem(3)
+    |> Enum.filter(fn rr -> :inet_dns.rr(rr, :type) == type end)
+    |> Enum.map(fn rr -> :inet_dns.rr(rr, :data) end)
+  end
+
   defp lookup_a_records(domain) do
     case :inet_res.lookup(String.to_charlist(domain), :in, :a) do
       [] ->
