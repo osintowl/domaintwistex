@@ -44,7 +44,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:res.cisco.com -all"
         ]
       },
-
       "cofense.com" => %{
         name: "Cofense",
         description: "Phishing awareness and defense platform",
@@ -69,7 +68,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:spf.infosecinstitute.com -all"
         ]
       },
-
       "barracudanetworks.com" => %{
         name: "Barracuda",
         description: "Email protection and security platform",
@@ -82,7 +80,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:*.ess.barracudanetworks.com -all"
         ]
       },
-
       "agari.com" => %{
         name: "Agari",
         description: "Email security and anti-phishing platform",
@@ -96,7 +93,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:*.spf-protect.agari.com -all"
         ]
       },
-
       "securence.com" => %{
         name: "Securence",
         description: "Email security and archiving solution",
@@ -109,7 +105,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:spf.securence.com -all"
         ]
       },
-
       "fireeyecloud.com" => %{
         name: "FireEye",
         description: "Cyber security and malware protection",
@@ -123,7 +118,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:_spf.fireeyecloud.com -all"
         ]
       },
-
       "ondmarc.com" => %{
         name: "OnDMARC",
         description: "DMARC email security platform",
@@ -136,7 +130,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:_spf.smart.ondmarc.com -all"
         ]
       },
-      
       "vali.email" => %{
         name: "Valimail",
         description: "Email authentication and security platform",
@@ -149,7 +142,6 @@ defmodule DomainTwistex.SPF.Providers.SecurityProviders do
           "v=spf1 include:_spf.vali.email -all"
         ]
       },
-
       "mailcontrol.com" => %{
         name: "Mail Control",
         description: "Email security and control platform",

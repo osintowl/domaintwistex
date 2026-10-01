@@ -46,8 +46,11 @@ defmodule DomainTwistex.PermutateTest do
     end
 
     test "supports opts to disable vowel_shuffle" do
-      with_shuffle = DomainTwistex.Permutate.generate_permutations("google.com", vowel_shuffle: true)
-      without_shuffle = DomainTwistex.Permutate.generate_permutations("google.com", vowel_shuffle: false)
+      with_shuffle =
+        DomainTwistex.Permutate.generate_permutations("google.com", vowel_shuffle: true)
+
+      without_shuffle =
+        DomainTwistex.Permutate.generate_permutations("google.com", vowel_shuffle: false)
 
       assert length(with_shuffle) > length(without_shuffle)
     end

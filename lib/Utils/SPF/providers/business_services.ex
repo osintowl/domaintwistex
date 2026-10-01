@@ -1,5 +1,4 @@
 defmodule DomainTwistex.SPF.Providers.BusinessServices do
-
   @moduledoc """
   Defines business service provider domains commonly found in SPF records.
   """
@@ -21,7 +20,6 @@ defmodule DomainTwistex.SPF.Providers.BusinessServices do
           "v=spf1 include:service-now.com -all"
         ]
       },
-
       "docusign.net" => %{
         name: "DocuSign",
         description: "Electronic signature and agreement cloud",
@@ -35,7 +33,6 @@ defmodule DomainTwistex.SPF.Providers.BusinessServices do
           "v=spf1 include:docusign.net -all"
         ]
       },
-
       "workday.com" => %{
         name: "Workday",
         description: "Enterprise cloud applications for finance and HR",
@@ -49,7 +46,6 @@ defmodule DomainTwistex.SPF.Providers.BusinessServices do
           "v=spf1 include:workday.com -all"
         ]
       },
-
       "zendesk.com" => %{
         name: "Zendesk",
         description: "Customer service and engagement platform",
@@ -63,7 +59,6 @@ defmodule DomainTwistex.SPF.Providers.BusinessServices do
           "v=spf1 include:zendesk.com -all"
         ]
       },
-
       "liveperson.net" => %{
         name: "LivePerson",
         description: "Conversational AI and messaging solutions",
@@ -78,7 +73,6 @@ defmodule DomainTwistex.SPF.Providers.BusinessServices do
           "v=spf1 include:_spf.liveperson.net -all"
         ]
       },
-
       "sapsf.com" => %{
         name: "SAP SuccessFactors",
         description: "Human capital management suite",
@@ -97,6 +91,4 @@ defmodule DomainTwistex.SPF.Providers.BusinessServices do
       }
     }
   end
-
 end
-

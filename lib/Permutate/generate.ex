@@ -12,7 +12,34 @@ defmodule DomainTwistex.Permutate do
 
   @vowels [?a, ?e, ?i, ?o, ?u, ?A, ?E, ?I, ?O, ?U]
   @vowel_shuffle_ceiling 6
-  @ascii_lower [?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?i, ?j, ?k, ?l, ?m, ?n, ?o, ?p, ?q, ?r, ?s, ?t, ?u, ?v, ?w, ?x, ?y, ?z]
+  @ascii_lower [
+    ?a,
+    ?b,
+    ?c,
+    ?d,
+    ?e,
+    ?f,
+    ?g,
+    ?h,
+    ?i,
+    ?j,
+    ?k,
+    ?l,
+    ?m,
+    ?n,
+    ?o,
+    ?p,
+    ?q,
+    ?r,
+    ?s,
+    ?t,
+    ?u,
+    ?v,
+    ?w,
+    ?x,
+    ?y,
+    ?z
+  ]
 
   @homoglyphs %{
     ?a => ~C"àáâãäåɑạǎăȧą",
@@ -43,52 +70,167 @@ defmodule DomainTwistex.Permutate do
   }
 
   @mapped %{
-    "a" => ["4"], "b" => ["8", "6"], "c" => [], "d" => ["cl"],
-    "e" => ["3"], "f" => ["ph"], "g" => ["9", "6"], "h" => [],
-    "i" => ["1", "l"], "j" => [], "k" => [], "l" => ["1", "i"],
-    "m" => ["rn", "nn"], "n" => [], "o" => ["0"], "p" => [],
-    "q" => ["9"], "r" => [], "s" => ["5", "z"], "t" => ["7"],
-    "u" => ["v"], "v" => ["u"], "w" => ["vv"], "x" => [],
-    "y" => [], "z" => ["2", "s"], "0" => ["o"], "1" => ["i", "l"],
-    "2" => ["z"], "3" => ["e"], "4" => ["a"], "5" => ["s"],
-    "6" => ["b", "g"], "7" => ["t"], "8" => ["b"], "9" => ["g", "q"],
-    "ck" => ["kk"], "oo" => ["00"]
+    "a" => ["4"],
+    "b" => ["8", "6"],
+    "c" => [],
+    "d" => ["cl"],
+    "e" => ["3"],
+    "f" => ["ph"],
+    "g" => ["9", "6"],
+    "h" => [],
+    "i" => ["1", "l"],
+    "j" => [],
+    "k" => [],
+    "l" => ["1", "i"],
+    "m" => ["rn", "nn"],
+    "n" => [],
+    "o" => ["0"],
+    "p" => [],
+    "q" => ["9"],
+    "r" => [],
+    "s" => ["5", "z"],
+    "t" => ["7"],
+    "u" => ["v"],
+    "v" => ["u"],
+    "w" => ["vv"],
+    "x" => [],
+    "y" => [],
+    "z" => ["2", "s"],
+    "0" => ["o"],
+    "1" => ["i", "l"],
+    "2" => ["z"],
+    "3" => ["e"],
+    "4" => ["a"],
+    "5" => ["s"],
+    "6" => ["b", "g"],
+    "7" => ["t"],
+    "8" => ["b"],
+    "9" => ["g", "q"],
+    "ck" => ["kk"],
+    "oo" => ["00"]
   }
 
   @keyboard_layouts [
-    %{?1 => "2q", ?2 => "3wq1", ?3 => "4ew2", ?4 => "5re3", ?5 => "6tr4",
-      ?6 => "7yt5", ?7 => "8uy6", ?8 => "9iu7", ?9 => "0oi8", ?0 => "po9",
-      ?q => "12wa", ?w => "3esaq2", ?e => "4rdsw3", ?r => "5tfde4",
-      ?t => "6ygfr5", ?y => "7uhgt6", ?u => "8ijhy7", ?i => "9okju8",
-      ?o => "0plki9", ?p => "lo0", ?a => "qwsz", ?s => "edxzaw",
-      ?d => "rfcxse", ?f => "tgvcdr", ?g => "yhbvft", ?h => "ujnbgy",
-      ?j => "ikmnhu", ?k => "olmji", ?l => "kop", ?z => "asx",
-      ?x => "zsdc", ?c => "xdfv", ?v => "cfgb", ?b => "vghn",
-      ?n => "bhjm", ?m => "njk"},
-    %{?1 => "2q", ?2 => "3wq1", ?3 => "4ew2", ?4 => "5re3", ?5 => "6tr4",
-      ?6 => "7zt5", ?7 => "8uz6", ?8 => "9iu7", ?9 => "0oi8", ?0 => "po9",
-      ?q => "12wa", ?w => "3esaq2", ?e => "4rdsw3", ?r => "5tfde4",
-      ?t => "6zgfr5", ?z => "7uhgt6", ?u => "8ijhz7", ?i => "9okju8",
-      ?o => "0plki9", ?p => "lo0", ?a => "qwsy", ?s => "edxyaw",
-      ?d => "rfcxse", ?f => "tgvcdr", ?g => "zhbvft", ?h => "ujnbgz",
-      ?j => "ikmnhu", ?k => "olmji", ?l => "kop", ?y => "asx",
-      ?x => "ysdc", ?c => "xdfv", ?v => "cfgb", ?b => "vghn",
-      ?n => "bhjm", ?m => "njk"},
-    %{?1 => "2a", ?2 => "3za1", ?3 => "4ez2", ?4 => "5re3", ?5 => "6tr4",
-      ?6 => "7yt5", ?7 => "8uy6", ?8 => "9iu7", ?9 => "0oi8", ?0 => "po9",
-      ?a => "2zq1", ?z => "3esqa2", ?e => "4rdsz3", ?r => "5tfde4",
-      ?t => "6ygfr5", ?y => "7uhgt6", ?u => "8ijhy7", ?i => "9okju8",
-      ?o => "0plki9", ?p => "lo0m", ?q => "zswa", ?s => "edxwqz",
-      ?d => "rfcxse", ?f => "tgvcdr", ?g => "yhbvft", ?h => "ujnbgy",
-      ?j => "iknhu", ?k => "olji", ?l => "kopm", ?m => "lp",
-      ?w => "sxq", ?x => "wsdc", ?c => "xdfv", ?v => "cfgb",
-      ?b => "vghn", ?n => "bhj"}
+    %{
+      ?1 => "2q",
+      ?2 => "3wq1",
+      ?3 => "4ew2",
+      ?4 => "5re3",
+      ?5 => "6tr4",
+      ?6 => "7yt5",
+      ?7 => "8uy6",
+      ?8 => "9iu7",
+      ?9 => "0oi8",
+      ?0 => "po9",
+      ?q => "12wa",
+      ?w => "3esaq2",
+      ?e => "4rdsw3",
+      ?r => "5tfde4",
+      ?t => "6ygfr5",
+      ?y => "7uhgt6",
+      ?u => "8ijhy7",
+      ?i => "9okju8",
+      ?o => "0plki9",
+      ?p => "lo0",
+      ?a => "qwsz",
+      ?s => "edxzaw",
+      ?d => "rfcxse",
+      ?f => "tgvcdr",
+      ?g => "yhbvft",
+      ?h => "ujnbgy",
+      ?j => "ikmnhu",
+      ?k => "olmji",
+      ?l => "kop",
+      ?z => "asx",
+      ?x => "zsdc",
+      ?c => "xdfv",
+      ?v => "cfgb",
+      ?b => "vghn",
+      ?n => "bhjm",
+      ?m => "njk"
+    },
+    %{
+      ?1 => "2q",
+      ?2 => "3wq1",
+      ?3 => "4ew2",
+      ?4 => "5re3",
+      ?5 => "6tr4",
+      ?6 => "7zt5",
+      ?7 => "8uz6",
+      ?8 => "9iu7",
+      ?9 => "0oi8",
+      ?0 => "po9",
+      ?q => "12wa",
+      ?w => "3esaq2",
+      ?e => "4rdsw3",
+      ?r => "5tfde4",
+      ?t => "6zgfr5",
+      ?z => "7uhgt6",
+      ?u => "8ijhz7",
+      ?i => "9okju8",
+      ?o => "0plki9",
+      ?p => "lo0",
+      ?a => "qwsy",
+      ?s => "edxyaw",
+      ?d => "rfcxse",
+      ?f => "tgvcdr",
+      ?g => "zhbvft",
+      ?h => "ujnbgz",
+      ?j => "ikmnhu",
+      ?k => "olmji",
+      ?l => "kop",
+      ?y => "asx",
+      ?x => "ysdc",
+      ?c => "xdfv",
+      ?v => "cfgb",
+      ?b => "vghn",
+      ?n => "bhjm",
+      ?m => "njk"
+    },
+    %{
+      ?1 => "2a",
+      ?2 => "3za1",
+      ?3 => "4ez2",
+      ?4 => "5re3",
+      ?5 => "6tr4",
+      ?6 => "7yt5",
+      ?7 => "8uy6",
+      ?8 => "9iu7",
+      ?9 => "0oi8",
+      ?0 => "po9",
+      ?a => "2zq1",
+      ?z => "3esqa2",
+      ?e => "4rdsz3",
+      ?r => "5tfde4",
+      ?t => "6ygfr5",
+      ?y => "7uhgt6",
+      ?u => "8ijhy7",
+      ?i => "9okju8",
+      ?o => "0plki9",
+      ?p => "lo0m",
+      ?q => "zswa",
+      ?s => "edxwqz",
+      ?d => "rfcxse",
+      ?f => "tgvcdr",
+      ?g => "yhbvft",
+      ?h => "ujnbgy",
+      ?j => "iknhu",
+      ?k => "olji",
+      ?l => "kopm",
+      ?m => "lp",
+      ?w => "sxq",
+      ?x => "wsdc",
+      ?c => "xdfv",
+      ?v => "cfgb",
+      ?b => "vghn",
+      ?n => "bhj"
+    }
   ]
 
   @tlds File.read!(Path.join([:code.priv_dir(:domaintwistex), "tlds.txt"]))
         |> String.split("\n", trim: true)
   @keywords File.read!(Path.join([:code.priv_dir(:domaintwistex), "keywords.txt"]))
-             |> String.split("\n", trim: true)
+            |> String.split("\n", trim: true)
 
   @doc """
   Generates all domain permutations for a given FQDN.
@@ -245,7 +387,7 @@ defmodule DomainTwistex.Permutate do
     chars = String.to_charlist(fqdn)
 
     for {c, i} <- Enum.with_index(chars),
-        c >= ?a and c <= ?z or c >= ?A and c <= ?Z do
+        (c >= ?a and c <= ?z) or (c >= ?A and c <= ?Z) do
       {before, after_chars} = Enum.split(chars, i + 1)
       new_fqdn = List.to_string(before ++ [c] ++ after_chars)
       %{fqdn: new_fqdn, tld: extract_tld(new_fqdn), kind: "Repetition"}
@@ -327,16 +469,19 @@ defmodule DomainTwistex.Permutate do
       products = cartesian_power(@vowels, n)
 
       for replacement <- products do
-        label = domain_chars
-        |> Enum.with_index()
-        |> Enum.map(fn {c, i} ->
-          pos_idx = Enum.find_index(vowel_positions, &(&1 == i))
-          if pos_idx != nil and pos_idx < n do
-            Enum.at(replacement, pos_idx)
-          else
-            c
-          end
-        end)
+        label =
+          domain_chars
+          |> Enum.with_index()
+          |> Enum.map(fn {c, i} ->
+            pos_idx = Enum.find_index(vowel_positions, &(&1 == i))
+
+            if pos_idx != nil and pos_idx < n do
+              Enum.at(replacement, pos_idx)
+            else
+              c
+            end
+          end)
+
         %{fqdn: "#{List.to_string(label)}.#{tld}", tld: tld, kind: "VowelShuffle"}
       end
     end
@@ -344,6 +489,7 @@ defmodule DomainTwistex.Permutate do
 
   defp cartesian_power(list, n), do: cartesian_power(list, n, [[]])
   defp cartesian_power(_list, 0, acc), do: acc
+
   defp cartesian_power(list, n, acc) do
     new_acc = for item <- list, rest <- acc, do: [item | rest]
     cartesian_power(list, n - 1, new_acc)
@@ -392,6 +538,7 @@ defmodule DomainTwistex.Permutate do
   defp faux_tld(domain, tld) do
     for tld_var <- @tlds do
       faux = String.replace(tld_var, ".", "-")
+
       [
         %{fqdn: "#{domain}-#{faux}.#{tld}", tld: tld, kind: "FauxTld"},
         %{fqdn: "#{domain}#{faux}.#{tld}", tld: tld, kind: "FauxTld"}

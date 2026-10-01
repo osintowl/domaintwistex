@@ -1,8 +1,7 @@
 defmodule DomainTwistex.MixProject do
   use Mix.Project
 
-
-  @version "0.9.1"
+  @version "0.9.2"
 
   def project do
     [
@@ -11,7 +10,8 @@ defmodule DomainTwistex.MixProject do
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      description: "Pure Elixir domain permutation and typosquatting detection engine. Generates 18 permutation types, resolves concurrently with DNS/WHOIS enrichment, and filters suspicious domains.",
+      description:
+        "Pure Elixir domain permutation and typosquatting detection engine. Generates 18 permutation types, resolves concurrently with DNS/WHOIS enrichment, and filters suspicious domains.",
       package: package()
     ]
   end
@@ -24,7 +24,7 @@ defmodule DomainTwistex.MixProject do
 
   defp deps do
     [
-      {:req, "~> 0.5.16"},
+      {:req, "~> 0.5 or ~> 0.6 or ~> 0.7"},
       {:ex_doc, "~> 0.39", only: :dev, runtime: false}
     ]
   end

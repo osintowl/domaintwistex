@@ -70,31 +70,45 @@ defmodule DomainTwistex.Utils do
   @private_prefixes [
     "10.",
     "192.168.",
-    "172.16.", "172.17.", "172.18.", "172.19.",
-    "172.20.", "172.21.", "172.22.", "172.23.",
-    "172.24.", "172.25.", "172.26.", "172.27.",
-    "172.28.", "172.29.", "172.30.", "172.31."
+    "172.16.",
+    "172.17.",
+    "172.18.",
+    "172.19.",
+    "172.20.",
+    "172.21.",
+    "172.22.",
+    "172.23.",
+    "172.24.",
+    "172.25.",
+    "172.26.",
+    "172.27.",
+    "172.28.",
+    "172.29.",
+    "172.30.",
+    "172.31."
   ]
 
   def validate_domain_resolution(domain, tld) do
     case DNS.resolve_ips(domain) do
       {:ok, %{ips: ips, cname: cname}} ->
         # Classify IPs safely
-        {public_ips, internal_ips} = try do
-          Enum.split_with(ips, fn ip -> not bogus_ip?(ip) end)
-        rescue
-          _ -> {ips, []}
-        catch
-          _, _ -> {ips, []}
-        end
+        {public_ips, internal_ips} =
+          try do
+            Enum.split_with(ips, fn ip -> not bogus_ip?(ip) end)
+          rescue
+            _ -> {ips, []}
+          catch
+            _, _ -> {ips, []}
+          end
 
-        ip_flags = try do
-          classify_ips(ips)
-        rescue
-          _ -> []
-        catch
-          _, _ -> []
-        end
+        ip_flags =
+          try do
+            classify_ips(ips)
+          rescue
+            _ -> []
+          catch
+            _, _ -> []
+          end
 
         cond do
           # CNAME matches TLD (registry wildcard)
@@ -103,7 +117,8 @@ defmodule DomainTwistex.Utils do
 
           # Has at least some IPs (public or internal)
           ips != [] ->
-            {:ok, %{ips: ips, public_ips: public_ips, internal_ips: internal_ips, flags: ip_flags}}
+            {:ok,
+             %{ips: ips, public_ips: public_ips, internal_ips: internal_ips, flags: ip_flags}}
 
           true ->
             {:error, :no_records}
@@ -123,9 +138,39 @@ defmodule DomainTwistex.Utils do
 
     flags = if Enum.any?(ips, &(&1 == "127.0.0.1")), do: [:localhost | flags], else: flags
     flags = if Enum.any?(ips, &(&1 == "0.0.0.0")), do: [:null_route | flags], else: flags
-    flags = if Enum.any?(ips, &String.starts_with?(&1, "10.")), do: [:private_10 | flags], else: flags
-    flags = if Enum.any?(ips, &String.starts_with?(&1, "192.168.")), do: [:private_192 | flags], else: flags
-    flags = if Enum.any?(ips, fn ip -> Enum.any?(["172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31."], &String.starts_with?(ip, &1)) end), do: [:private_172 | flags], else: flags
+
+    flags =
+      if Enum.any?(ips, &String.starts_with?(&1, "10.")), do: [:private_10 | flags], else: flags
+
+    flags =
+      if Enum.any?(ips, &String.starts_with?(&1, "192.168.")),
+        do: [:private_192 | flags],
+        else: flags
+
+    flags =
+      if Enum.any?(ips, fn ip ->
+           Enum.any?(
+             [
+               "172.16.",
+               "172.17.",
+               "172.18.",
+               "172.19.",
+               "172.20.",
+               "172.21.",
+               "172.22.",
+               "172.23.",
+               "172.24.",
+               "172.25.",
+               "172.26.",
+               "172.27.",
+               "172.28.",
+               "172.29.",
+               "172.30.",
+               "172.31."
+             ],
+             &String.starts_with?(ip, &1)
+           )
+         end), do: [:private_172 | flags], else: flags
 
     flags
   end
@@ -163,15 +208,42 @@ defmodule DomainTwistex.Utils do
       {:ok, %{ips: ips, public_ips: public_ips, internal_ips: internal_ips, flags: ip_flags}} ->
         # Run all independent DNS lookups concurrently
         dns_tasks = [
-          Task.async(fn -> {:mx, safe_dns_query(fn -> DNS.get_mx_records(permutation.fqdn) end, [])} end),
-          Task.async(fn -> {:txt, safe_dns_query(fn -> DNS.get_txt_records(permutation.fqdn) end, [])} end),
-          Task.async(fn -> {:dmarc, safe_dns_query(fn -> DNS.check_dmarc(permutation.fqdn) end, %{})} end),
-          Task.async(fn -> {:ns, safe_dns_query(fn -> DNS.get_nameservers(permutation.fqdn) end, [])} end),
-          Task.async(fn -> {:wildcard, safe_dns_query(fn -> DNS.has_wildcard(permutation.fqdn) end, false)} end)
+          Task.async(fn ->
+            {:mx, safe_dns_query(fn -> DNS.get_mx_records(permutation.fqdn) end, [])}
+          end),
+          Task.async(fn ->
+            {:txt, safe_dns_query(fn -> DNS.get_txt_records(permutation.fqdn) end, [])}
+          end),
+          Task.async(fn ->
+            {:dmarc, safe_dns_query(fn -> DNS.check_dmarc(permutation.fqdn) end, %{})}
+          end),
+          Task.async(fn ->
+            {:ns, safe_dns_query(fn -> DNS.get_nameservers(permutation.fqdn) end, [])}
+          end),
+          Task.async(fn ->
+            {:wildcard, safe_dns_query(fn -> DNS.has_wildcard(permutation.fqdn) end, false)}
+          end)
         ]
 
-        dns_results = Task.await_many(dns_tasks, 10_000)
-        dns_map = Map.new(dns_results)
+        # yield_many returns whatever completed within the timeout without
+        # crashing the process — timed-out tasks are shut down gracefully.
+        dns_map =
+          dns_tasks
+          |> Task.yield_many(5_000)
+          |> Enum.reduce(%{}, fn {task, result}, acc ->
+            case result do
+              {:ok, {key, value}} ->
+                Map.put(acc, key, value)
+
+              {:exit, _reason} ->
+                Task.shutdown(task, :brutal_kill)
+                acc
+
+              nil ->
+                Task.shutdown(task, :brutal_kill)
+                acc
+            end
+          end)
 
         mx_records = Map.get(dns_map, :mx, [])
         txt_records = Map.get(dns_map, :txt, [])
@@ -181,47 +253,53 @@ defmodule DomainTwistex.Utils do
         spf_records = SPF.parse_txt_records({:ok, txt_records})
 
         # Skip HTTP check if no public IPs - don't connect to localhost/private ranges
-        server_response = if public_ips != [] do
-          try do
-            check_server(permutation.fqdn)
-          rescue
-            _ -> %{status: :error, reason: "check failed"}
-          catch
-            _, _ -> %{status: :error, reason: "check failed"}
+        server_response =
+          if public_ips != [] do
+            try do
+              check_server(permutation.fqdn)
+            rescue
+              _ -> %{status: :error, reason: "check failed"}
+            catch
+              _, _ -> %{status: :error, reason: "check failed"}
+            end
+          else
+            %{status: :skipped, reason: "no public IPs"}
           end
-        else
-          %{status: :skipped, reason: "no public IPs"}
-        end
 
         # Optional WHOIS enrichment (slower, like dnstwist -w flag)
-        whois_data = if include_whois do
-          try do
-            case Whois.lookup(permutation.fqdn) do
-              {:ok, data} -> %{
-                registrar: data[:registrar],
-                creation_date: data[:creation_date],
-                expiration_date: data[:expiration_date],
-                source: data[:source]
-              }
-              {:error, _} -> nil
+        whois_data =
+          if include_whois do
+            try do
+              case Whois.lookup(permutation.fqdn) do
+                {:ok, data} ->
+                  %{
+                    registrar: data[:registrar],
+                    creation_date: data[:creation_date],
+                    expiration_date: data[:expiration_date],
+                    source: data[:source]
+                  }
+
+                {:error, _} ->
+                  nil
+              end
+            rescue
+              _ -> nil
+            catch
+              _, _ -> nil
             end
-          rescue
-            _ -> nil
-          catch
-            _, _ -> nil
+          else
+            nil
           end
-        else
-          nil
-        end
 
         # Fuzzy matching scores
-        fuzzy = try do
-          calculate_fuzzy_scores(domain, permutation.fqdn)
-        rescue
-          _ -> %{}
-        catch
-          _, _ -> %{}
-        end
+        fuzzy =
+          try do
+            calculate_fuzzy_scores(domain, permutation.fqdn)
+          rescue
+            _ -> %{}
+          catch
+            _, _ -> %{}
+          end
 
         {:ok,
          Map.merge(permutation, %{
@@ -304,6 +382,7 @@ defmodule DomainTwistex.Utils do
   # Normalized Levenshtein (0.0-1.0, higher = more similar)
   defp normalized_levenshtein(s1, s2) do
     max_len = max(String.length(s1), String.length(s2))
+
     if max_len == 0 do
       1.0
     else
@@ -354,8 +433,12 @@ defmodule DomainTwistex.Utils do
           0.0
         else
           case {Map.get(key_positions, c1), Map.get(key_positions, c2)} do
-            {nil, _} -> 1.0
-            {_, nil} -> 1.0
+            {nil, _} ->
+              1.0
+
+            {_, nil} ->
+              1.0
+
             {{r1, c1_pos}, {r2, c2_pos}} ->
               # Euclidean distance on keyboard
               :math.sqrt(:math.pow(r1 - r2, 2) + :math.pow(c1_pos - c2_pos, 2)) / 5.0
@@ -411,7 +494,7 @@ defmodule DomainTwistex.Utils do
            String.to_charlist(domain),
            80,
            [:binary, packet: 0, active: false],
-           10000
+           5000
          ) do
       {:ok, socket} ->
         http_request = "HEAD / HTTP/1.1\r\nHost: #{domain}\r\nConnection: close\r\n\r\n"

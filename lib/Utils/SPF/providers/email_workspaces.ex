@@ -1,5 +1,4 @@
 defmodule DomainTwistex.SPF.Providers.EmailWorkspaces do
-
   @moduledoc """
   Defines email workspace provider domains commonly found in SPF records.
   Focuses on business email and collaboration platforms.
@@ -22,7 +21,6 @@ defmodule DomainTwistex.SPF.Providers.EmailWorkspaces do
           "v=spf1 include:spf_c.oraclecloud.com -all"
         ]
       },
-
       "amazonses.com" => %{
         name: "Amazon SES",
         description: "Amazon Simple Email Service",
@@ -36,7 +34,6 @@ defmodule DomainTwistex.SPF.Providers.EmailWorkspaces do
           "v=spf1 include:amazonses.com -all"
         ]
       },
-
       "google.com" => %{
         name: "Google Workspace",
         description: "Google cloud email and collaboration platform",
@@ -50,7 +47,6 @@ defmodule DomainTwistex.SPF.Providers.EmailWorkspaces do
           "v=spf1 include:_spf.google.com -all"
         ]
       },
-
       "firebasemail.com" => %{
         name: "Firebase",
         description: "Google Firebase cloud platform",
@@ -62,7 +58,7 @@ defmodule DomainTwistex.SPF.Providers.EmailWorkspaces do
         common_records: [
           "v=spf1 include:_spf.firebasemail.com -all"
         ]
-      }, 
+      },
       # Microsoft 365 (formerly Office 365)
       "microsoft.com" => %{
         name: "Microsoft 365",

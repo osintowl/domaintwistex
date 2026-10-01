@@ -29,7 +29,7 @@ defmodule DomainTwistex.Twist do
       * :domain - The original domain string
       * :original - Resolved baseline data for the original domain (without fuzzy scores)
       * :permutations - List of resolvable permutation results (excluding wildcards with no public IPs)
-      * :stats - Map with :total (permutations generated) and :resolvable (permutations that resolved)
+      * :stats - Map with :total, :resolvable, and :elapsed_ms (wall-clock time in milliseconds)
 
   ## Examples
       ```elixir
@@ -41,7 +41,7 @@ defmodule DomainTwistex.Twist do
           %{kind: "Tld", fqdn: "example.co.uk", ip_addresses: [...], ...},
           ...
         ],
-        stats: %{total: 9541, resolvable: 42}
+        stats: %{total: 9541, resolvable: 42, elapsed_ms: 12_345}
       }
 
       # With custom options
@@ -67,6 +67,8 @@ defmodule DomainTwistex.Twist do
 
     check_opts = [whois: opts[:whois]]
 
+    start_time = System.monotonic_time(:millisecond)
+
     # Resolve original domain and store its baseline data
     original = resolve_original(domain, check_opts)
 
@@ -85,10 +87,14 @@ defmodule DomainTwistex.Twist do
       |> Stream.filter(fn
         {:ok, {:ok, result}} ->
           result.fqdn != domain and not (result.wildcard == true and result.public_ips == [])
-        _ -> false
+
+        _ ->
+          false
       end)
       |> Stream.map(fn {:ok, {:ok, result}} -> result end)
       |> Enum.into([])
+
+    elapsed_ms = System.monotonic_time(:millisecond) - start_time
 
     %{
       domain: domain,
@@ -96,7 +102,8 @@ defmodule DomainTwistex.Twist do
       permutations: permutations,
       stats: %{
         total: total_generated,
-        resolvable: length(permutations)
+        resolvable: length(permutations),
+        elapsed_ms: elapsed_ms
       }
     }
   end
@@ -131,7 +138,7 @@ defmodule DomainTwistex.Twist do
         domain: "google.com",
         original: %{...},
         permutations: [%{kind: "Tld", mx_records: [%{priority: 0, server: "smtp.google.com"}], ...}],
-        stats: %{total: 9541, resolvable: 42, mx_count: 12}
+        stats: %{total: 9541, resolvable: 42, elapsed_ms: 12_345, mx_count: 12}
       }
       ```
   """
@@ -228,7 +235,9 @@ defmodule DomainTwistex.Twist do
     |> Stream.filter(fn
       {:ok, {:ok, result}} ->
         result.fqdn != domain and not (result.wildcard == true and result.public_ips == [])
-      _ -> false
+
+      _ ->
+        false
     end)
     |> Stream.map(fn {:ok, {:ok, result}} -> result end)
     |> Enum.into([])
@@ -273,7 +282,13 @@ defmodule DomainTwistex.Twist do
       |> Enum.zip(nodes)
       |> Enum.map(fn {{_idx, perms}, target_node} ->
         Task.async(fn ->
-          :erpc.call(target_node, __MODULE__, :analyze_chunk, [perms, domain, chunk_opts], :infinity)
+          :erpc.call(
+            target_node,
+            __MODULE__,
+            :analyze_chunk,
+            [perms, domain, chunk_opts],
+            :infinity
+          )
         end)
       end)
 

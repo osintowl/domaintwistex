@@ -22,23 +22,22 @@ defmodule DomainTwistex.Utils.Whois do
   @rdap_cache_key :rdap_bootstrap_cache
 
   # Load WHOIS servers from IANA-sourced data at compile time
-  @external_resource whois_servers_path = Path.join(:code.priv_dir(:domaintwistex), "whois_servers.json")
+  @external_resource whois_servers_path =
+                       Path.join(:code.priv_dir(:domaintwistex), "whois_servers.json")
 
-  @whois_servers (
-    case File.read(whois_servers_path) do
-      {:ok, json} ->
-        Jason.decode!(json)
+  @whois_servers (case File.read(whois_servers_path) do
+                    {:ok, json} ->
+                      Jason.decode!(json)
 
-      {:error, _} ->
-        # Fallback for when priv file doesn't exist (e.g., during initial compile)
-        %{
-          "com" => "whois.verisign-grs.com",
-          "net" => "whois.verisign-grs.com",
-          "org" => "whois.publicinterestregistry.org",
-          "io" => "whois.nic.io"
-        }
-    end
-  )
+                    {:error, _} ->
+                      # Fallback for when priv file doesn't exist (e.g., during initial compile)
+                      %{
+                        "com" => "whois.verisign-grs.com",
+                        "net" => "whois.verisign-grs.com",
+                        "org" => "whois.publicinterestregistry.org",
+                        "io" => "whois.nic.io"
+                      }
+                  end)
 
   @doc """
   Checks if a domain is registered.
@@ -49,12 +48,15 @@ defmodule DomainTwistex.Utils.Whois do
     case lookup(domain) do
       {:ok, %{status: status}} when is_list(status) ->
         # Check for "not found" type statuses
-        not_found = Enum.any?(status, fn s ->
-          s_lower = String.downcase(to_string(s))
-          String.contains?(s_lower, "available") or
-          String.contains?(s_lower, "no match") or
-          String.contains?(s_lower, "not found")
-        end)
+        not_found =
+          Enum.any?(status, fn s ->
+            s_lower = String.downcase(to_string(s))
+
+            String.contains?(s_lower, "available") or
+              String.contains?(s_lower, "no match") or
+              String.contains?(s_lower, "not found")
+          end)
+
         {:ok, not not_found}
 
       {:ok, _data} ->
@@ -64,9 +66,10 @@ defmodule DomainTwistex.Utils.Whois do
       {:error, reason} when is_binary(reason) ->
         # Check if error indicates domain not found
         reason_lower = String.downcase(reason)
+
         if String.contains?(reason_lower, "not found") or
-           String.contains?(reason_lower, "no match") or
-           String.contains?(reason_lower, "available") do
+             String.contains?(reason_lower, "no match") or
+             String.contains?(reason_lower, "available") do
           {:ok, false}
         else
           {:error, reason}
@@ -133,15 +136,20 @@ defmodule DomainTwistex.Utils.Whois do
              ) do
           {:ok, %Req.Response{status: 200, body: rdap_data}} ->
             {:ok, parse_rdap_response(domain, rdap_data, inspect(rdap_data))}
+
           {:ok, %Req.Response{status: 404}} ->
             {:error, "Domain not found in RDAP"}
+
           {:ok, %Req.Response{status: status}} ->
             {:error, "RDAP server returned status #{status}"}
+
           {:error, %Req.TransportError{reason: reason}} ->
             {:error, "RDAP request failed: #{inspect(reason)}"}
+
           {:error, reason} ->
             {:error, "RDAP request failed: #{inspect(reason)}"}
         end
+
       {:error, reason} ->
         {:error, reason}
     end
@@ -154,6 +162,7 @@ defmodule DomainTwistex.Utils.Whois do
           nil -> {:error, "No RDAP server found for TLD: #{tld}"}
           server -> {:ok, server}
         end
+
       {:error, _} ->
         {:error, "Failed to fetch IANA RDAP bootstrap registry"}
     end
@@ -163,15 +172,21 @@ defmodule DomainTwistex.Utils.Whois do
     # Check cache first
     case Process.get(@rdap_cache_key) do
       nil ->
-        case Req.get(@iana_rdap_bootstrap_url, receive_timeout: 10_000, connect_options: [transport_opts: [verify: :verify_none]]) do
+        case Req.get(@iana_rdap_bootstrap_url,
+               receive_timeout: 10_000,
+               connect_options: [transport_opts: [verify: :verify_none]]
+             ) do
           {:ok, %Req.Response{status: 200, body: data}} ->
             Process.put(@rdap_cache_key, data)
             {:ok, data}
+
           {:ok, %Req.Response{status: status}} ->
             {:error, "IANA RDAP bootstrap returned status #{status}"}
+
           {:error, reason} ->
             {:error, "Failed to fetch IANA RDAP bootstrap: #{inspect(reason)}"}
         end
+
       cached_data ->
         {:ok, cached_data}
     end
@@ -191,29 +206,35 @@ defmodule DomainTwistex.Utils.Whois do
     tld = extract_tld(domain)
 
     case Map.get(@whois_servers, tld) do
-      nil -> {:error, "No WHOIS server for TLD: #{tld}"}
+      nil ->
+        {:error, "No WHOIS server for TLD: #{tld}"}
+
       whois_server ->
         case tcp_whois_query(whois_server, domain) do
           {:ok, raw_data} ->
-            registered = not (String.contains?(String.downcase(raw_data), "no match") or
-                             String.contains?(String.downcase(raw_data), "not found") or
-                             String.contains?(String.downcase(raw_data), "available"))
-            {:ok, %{
-              domain: domain,
-              source: "whois",
-              raw_data: raw_data,
-              registered: registered,
-              registrar: parse_whois_field(raw_data, "Registrar"),
-              creation_date: parse_whois_field(raw_data, "Creation Date"),
-              expiration_date: parse_whois_field(raw_data, "Expir"),
-              updated_date: parse_whois_field(raw_data, "Updated Date"),
-              status: parse_whois_status(raw_data),
-              nameservers: parse_whois_nameservers(raw_data),
-              registrant: @whois_not_available,
-              admin_contact: @whois_not_available,
-              tech_contact: @whois_not_available,
-              abuse_contact: @whois_not_available
-            }}
+            registered =
+              not (String.contains?(String.downcase(raw_data), "no match") or
+                     String.contains?(String.downcase(raw_data), "not found") or
+                     String.contains?(String.downcase(raw_data), "available"))
+
+            {:ok,
+             %{
+               domain: domain,
+               source: "whois",
+               raw_data: raw_data,
+               registered: registered,
+               registrar: parse_whois_field(raw_data, "Registrar"),
+               creation_date: parse_whois_field(raw_data, "Creation Date"),
+               expiration_date: parse_whois_field(raw_data, "Expir"),
+               updated_date: parse_whois_field(raw_data, "Updated Date"),
+               status: parse_whois_status(raw_data),
+               nameservers: parse_whois_nameservers(raw_data),
+               registrant: @whois_not_available,
+               admin_contact: @whois_not_available,
+               tech_contact: @whois_not_available,
+               abuse_contact: @whois_not_available
+             }}
+
           {:error, reason} ->
             {:error, reason}
         end
@@ -296,6 +317,7 @@ defmodule DomainTwistex.Utils.Whois do
         result = recv_all(socket, <<>>)
         :gen_tcp.close(socket)
         result
+
       {:error, reason} ->
         {:error, "Failed to connect to WHOIS server: #{inspect(reason)}"}
     end
@@ -336,6 +358,7 @@ defmodule DomainTwistex.Utils.Whois do
 
     Enum.find_value(entities, fn entity ->
       roles = Map.get(entity, "roles", [])
+
       if "registrar" in roles do
         vcard_array = Map.get(entity, "vcardArray", [])
         extract_vcard_name(vcard_array)
@@ -355,16 +378,18 @@ defmodule DomainTwistex.Utils.Whois do
       end)
     end
   end
+
   defp extract_vcard_name(_), do: nil
 
   # Extract full contact info from an entity by role
   # Searches both top-level entities and nested entities (e.g., abuse contact nested in registrar)
   defp extract_entity_by_role(entities, role) do
     # First try to find at top level
-    entity = Enum.find(entities, fn entity ->
-      roles = Map.get(entity, "roles", [])
-      role in roles
-    end)
+    entity =
+      Enum.find(entities, fn entity ->
+        roles = Map.get(entity, "roles", [])
+        role in roles
+      end)
 
     case entity do
       nil ->
@@ -384,10 +409,11 @@ defmodule DomainTwistex.Utils.Whois do
     Enum.find_value(entities, fn entity ->
       nested = Map.get(entity, "entities", [])
 
-      nested_entity = Enum.find(nested, fn nested_entity ->
-        roles = Map.get(nested_entity, "roles", [])
-        role in roles
-      end)
+      nested_entity =
+        Enum.find(nested, fn nested_entity ->
+          roles = Map.get(nested_entity, "roles", [])
+          role in roles
+        end)
 
       case nested_entity do
         nil -> nil
@@ -500,6 +526,7 @@ defmodule DomainTwistex.Utils.Whois do
       _ -> false
     end
   end
+
   defp is_fax_type?(_), do: false
 
   # Extract full address from vCard adr property
@@ -547,6 +574,7 @@ defmodule DomainTwistex.Utils.Whois do
 
     Enum.find_value(events, fn event ->
       action = Map.get(event, "eventAction", "")
+
       if String.contains?(String.downcase(action), event_type) do
         Map.get(event, "eventDate")
       end
@@ -563,10 +591,11 @@ defmodule DomainTwistex.Utils.Whois do
   defp extract_rdap_nameservers(rdap_data) do
     nameservers = Map.get(rdap_data, "nameservers", [])
 
-    ns_list = Enum.map(nameservers, fn ns ->
-      Map.get(ns, "ldhName", "")
-    end)
-    |> Enum.filter(&(&1 != ""))
+    ns_list =
+      Enum.map(nameservers, fn ns ->
+        Map.get(ns, "ldhName", "")
+      end)
+      |> Enum.filter(&(&1 != ""))
 
     case ns_list do
       [] -> nil

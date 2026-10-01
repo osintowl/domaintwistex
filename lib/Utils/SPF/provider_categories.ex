@@ -50,7 +50,6 @@ defmodule DomainTwistex.SPF.ProviderCategories do
         description: "Marketing tools and services",
         providers: MarketingPlatforms.providers()
       }
-
     }
   end
 

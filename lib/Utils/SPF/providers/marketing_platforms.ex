@@ -23,8 +23,7 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         spf_mechanisms: ["include:sendgrid.net"],
         common_records: ["v=spf1 include:sendgrid.net -all"]
       },
-
-    "mcsv.net" => %{
+      "mcsv.net" => %{
         name: "Mailchimp",
         description: "Email marketing and automation platform",
         type: :primary,
@@ -35,7 +34,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         ],
         common_records: ["v=spf1 include:servers.mcsv.net -all"]
       },
-
       "constantcontact.com" => %{
         name: "Constant Contact",
         description: "Email marketing and automation service",
@@ -44,7 +42,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         spf_mechanisms: ["include:spf.constantcontact.com"],
         common_records: ["v=spf1 include:spf.constantcontact.com -all"]
       },
-
       "createsend.com" => %{
         name: "Campaign Monitor",
         description: "Email marketing and automation platform",
@@ -53,7 +50,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         spf_mechanisms: ["include:_spf.createsend.com"],
         common_records: ["v=spf1 include:_spf.createsend.com -all"]
       },
-
       "sendinblue.com" => %{
         name: "Sendinblue",
         description: "Digital marketing and email platform",
@@ -72,7 +68,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         spf_mechanisms: ["include:cust-spf.exacttarget.com"],
         common_records: ["v=spf1 include:cust-spf.exacttarget.com -all"]
       },
-
       "hubspotemail.net" => %{
         name: "HubSpot",
         description: "Marketing, sales, and CRM platform",
@@ -83,7 +78,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         ],
         common_records: ["v=spf1 include:*.spf*.hubspotemail.net -all"]
       },
-
       "mktomail.com" => %{
         name: "Marketo",
         description: "Marketing automation software",
@@ -92,7 +86,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         spf_mechanisms: ["include:mktomail.com"],
         common_records: ["v=spf1 include:mktomail.com -all"]
       },
-
       "pardot.com" => %{
         name: "Pardot",
         description: "B2B marketing automation by Salesforce",
@@ -101,7 +94,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         spf_mechanisms: ["include:et._spf.pardot.com"],
         common_records: ["v=spf1 include:et._spf.pardot.com -all"]
       },
-
       "act-on.net" => %{
         name: "Act-On",
         description: "Marketing automation platform",
@@ -113,7 +105,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         ],
         common_records: ["v=spf1 include:_spf.act-on.net -all"]
       },
-
       "messagegears.net" => %{
         name: "MessageGears",
         description: "Enterprise email marketing platform",
@@ -149,7 +140,6 @@ defmodule DomainTwistex.SPF.Providers.MarketingPlatforms do
         parent_company: "Adobe",
         specializations: ["B2B Marketing"]
       },
-
 
       # Campaign Monitor
       "campaignmonitor.com" => %{

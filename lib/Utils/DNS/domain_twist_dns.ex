@@ -8,6 +8,9 @@ defmodule DomainTwistex.DNS do
   automatically fall back to TCP for large or truncated responses.
   """
 
+  # Timeout for all :inet_res calls (milliseconds)
+  @dns_timeout 5_000
+
   @doc """
   Resolves IP addresses for a given domain, handling both A and CNAME records.
 
@@ -26,7 +29,7 @@ defmodule DomainTwistex.DNS do
       ```
   """
   def resolve_ips(domain) do
-    cname_result = :inet_res.lookup(String.to_charlist(domain), :in, :cname)
+    cname_result = :inet_res.lookup(String.to_charlist(domain), :in, :cname, [], @dns_timeout)
     a_records = lookup_a_records(domain)
 
     case {cname_result, a_records} do
@@ -62,7 +65,7 @@ defmodule DomainTwistex.DNS do
   """
   def get_nameservers(domain) do
     try do
-      case :inet_res.lookup(String.to_charlist(domain), :in, :ns) do
+      case :inet_res.lookup(String.to_charlist(domain), :in, :ns, [], @dns_timeout) do
         [] ->
           {:error, "No nameservers found"}
 
@@ -99,7 +102,7 @@ defmodule DomainTwistex.DNS do
   """
   def get_mx_records(domain) do
     try do
-      case :inet_res.lookup(String.to_charlist(domain), :in, :mx) do
+      case :inet_res.lookup(String.to_charlist(domain), :in, :mx, [], @dns_timeout) do
         [] ->
           {:ok, []}
 
@@ -150,6 +153,7 @@ defmodule DomainTwistex.DNS do
             # TXT records come as nested charlists: [['v','=','s','p','f','1',' ','-','a','l','l']]
             [inner | _] = outer when is_list(inner) ->
               outer |> List.flatten() |> to_string() |> String.trim()
+
             flat when is_list(flat) ->
               flat |> to_string() |> String.trim()
           end)
@@ -177,7 +181,7 @@ defmodule DomainTwistex.DNS do
     random_sub = :crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)
     test_domain = "#{random_sub}.#{domain}"
 
-    case :inet_res.lookup(String.to_charlist(test_domain), :in, :a) do
+    case :inet_res.lookup(String.to_charlist(test_domain), :in, :a, [], @dns_timeout) do
       [] -> {:ok, false}
       ips when is_list(ips) and length(ips) > 0 -> {:ok, true}
       _ -> {:ok, false}
@@ -196,6 +200,7 @@ defmodule DomainTwistex.DNS do
           |> Enum.map(fn
             [inner | _] = outer when is_list(inner) ->
               outer |> List.flatten() |> to_string() |> String.trim()
+
             flat when is_list(flat) ->
               flat |> to_string() |> String.trim()
           end)
@@ -216,7 +221,7 @@ defmodule DomainTwistex.DNS do
   @doc false
   defp resolve(name, type) do
     # Try UDP first with EDNS0 and 4096-byte payload size (most responses fit)
-    case :inet_res.resolve(name, :in, type, edns: 0, udp_payload_size: 4096) do
+    case :inet_res.resolve(name, :in, type, [edns: 0, udp_payload_size: 4096], @dns_timeout) do
       {:ok, rec} ->
         # Check for truncated response (TC flag set) — if so, retry over TCP
         if truncated?(rec) do
@@ -235,7 +240,7 @@ defmodule DomainTwistex.DNS do
   end
 
   defp tcp_fallback(name, type) do
-    case :inet_res.resolve(name, :in, type, usevc: true, edns: false) do
+    case :inet_res.resolve(name, :in, type, [usevc: true, edns: false], @dns_timeout) do
       {:ok, rec} -> {:ok, extract_records(rec, type)}
       {:error, reason} -> {:error, reason}
     end
@@ -254,7 +259,7 @@ defmodule DomainTwistex.DNS do
   end
 
   defp lookup_a_records(domain) do
-    case :inet_res.lookup(String.to_charlist(domain), :in, :a) do
+    case :inet_res.lookup(String.to_charlist(domain), :in, :a, [], @dns_timeout) do
       [] ->
         {:error, :no_records}
 
@@ -278,4 +283,3 @@ defmodule DomainTwistex.DNS do
     end)
   end
 end
-

@@ -1,12 +1,11 @@
 defmodule DomainTwistex.SPF.Providers.HostingProviders do
-
   @moduledoc """
   Defines hosting provider domains commonly found in SPF records.
   """
 
   def providers do
     %{
-           "secureserver.net" => %{
+      "secureserver.net" => %{
         name: "GoDaddy",
         description: "Domain registrar and web hosting provider",
         type: :primary,
@@ -20,7 +19,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:secureserver.net -all"
         ]
       },
-
       "websitewelcome.com" => %{
         name: "HostGator",
         description: "Web hosting provider",
@@ -33,7 +31,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:websitewelcome.com -all"
         ]
       },
-
       "kinstamailservice.com" => %{
         name: "Kinsta Mail",
         description: "Managed WordPress hosting provider's email service",
@@ -46,7 +43,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:relay.kinstamailservice.com -all"
         ]
       },
-
       "site4now.net" => %{
         name: "Site4Now",
         description: "Web hosting provider",
@@ -59,7 +55,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:_spf.site4now.net -all"
         ]
       },
-
       "a2hosting.com" => %{
         name: "A2 Hosting",
         description: "Web hosting provider",
@@ -72,7 +67,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:spf.a2hosting.com -all"
         ]
       },
-
       "aruba.it" => %{
         name: "Aruba",
         description: "Italian web hosting and cloud provider",
@@ -85,7 +79,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:_spf.aruba.it -all"
         ]
       },
-
       "hostwhitelabel.com" => %{
         name: "Host White Label",
         description: "White label hosting provider",
@@ -98,8 +91,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:spf.hostwhitelabel.com -all"
         ]
       },
-
-      
 
       # Plesk
       "plesk.com" => %{
@@ -115,7 +106,6 @@ defmodule DomainTwistex.SPF.Providers.HostingProviders do
           "v=spf1 include:spf.plesk.com -all"
         ]
       },
-
 
       # Bluehost
       "bluehost.com" => %{

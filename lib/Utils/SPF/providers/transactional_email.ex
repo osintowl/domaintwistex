@@ -1,5 +1,4 @@
 defmodule DomainTwistex.SPF.Providers.TransactionalEmail do
-
   @moduledoc """
   Defines transactional email provider domains commonly found in SPF records.
   """

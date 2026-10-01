@@ -1,5 +1,4 @@
 defmodule DomainTwistex.SPF.Providers.CRMPlatforms do
-
   @moduledoc """
   Defines CRM platform domains commonly found in SPF records.
   """

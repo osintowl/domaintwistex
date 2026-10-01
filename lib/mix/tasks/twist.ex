@@ -83,17 +83,19 @@ defmodule Mix.Tasks.Twist do
     IO.puts("WHOIS: #{if include_whois, do: "enabled", else: "disabled"}")
     IO.puts(String.duplicate("=", 50))
 
-    results = DomainTwistex.Twist.analyze_domain(domain,
-      max_concurrency: concurrency,
-      timeout: timeout,
-      whois: include_whois
-    )
+    results =
+      DomainTwistex.Twist.analyze_domain(domain,
+        max_concurrency: concurrency,
+        timeout: timeout,
+        whois: include_whois
+      )
 
-    permutations = if mx_only do
-      Enum.filter(results.permutations, &(not Enum.empty?(&1.mx_records)))
-    else
-      Enum.filter(results.permutations, & &1.resolvable)
-    end
+    permutations =
+      if mx_only do
+        Enum.filter(results.permutations, &(not Enum.empty?(&1.mx_records)))
+      else
+        Enum.filter(results.permutations, & &1.resolvable)
+      end
 
     IO.puts("\nScanning domains...\n")
 
@@ -102,6 +104,7 @@ defmodule Mix.Tasks.Twist do
     IO.puts("#{IO.ANSI.green()}Scan complete!#{IO.ANSI.reset()}")
     IO.puts("Total permutations: #{results.stats.total}")
     IO.puts("Resolvable found: #{results.stats.resolvable}")
+    IO.puts("Elapsed time: #{format_elapsed(results.stats.elapsed_ms)}")
     IO.puts(String.duplicate("=", 50))
 
     if length(permutations) > 0 do
@@ -202,6 +205,15 @@ defmodule Mix.Tasks.Twist do
     else
       IO.puts(csv)
     end
+  end
+
+  defp format_elapsed(ms) when ms < 1_000, do: "#{ms}ms"
+  defp format_elapsed(ms) when ms < 60_000, do: "#{Float.round(ms / 1_000, 1)}s"
+
+  defp format_elapsed(ms) do
+    minutes = div(ms, 60_000)
+    seconds = Float.round(rem(ms, 60_000) / 1_000, 1)
+    "#{minutes}m #{seconds}s"
   end
 
   defp encode_json(data) when is_list(data) do
