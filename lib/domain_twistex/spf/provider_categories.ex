@@ -1,6 +1,6 @@
 defmodule DomainTwistex.SPF.ProviderCategories do
   @moduledoc """
-  Defines categories for different types of email service providers and their SPF records.
+  Aggregates all SPF provider category definitions.
   """
 
   alias DomainTwistex.SPF.Providers.{
@@ -13,6 +13,10 @@ defmodule DomainTwistex.SPF.ProviderCategories do
     MarketingPlatforms
   }
 
+  @doc """
+  Returns all provider categories with their providers.
+  """
+  @spec categories() :: map()
   def categories do
     %{
       workspaces: %{
@@ -51,53 +55,5 @@ defmodule DomainTwistex.SPF.ProviderCategories do
         providers: MarketingPlatforms.providers()
       }
     }
-  end
-
-  @doc """
-  Returns all known providers across all categories
-  """
-  def all_providers do
-    categories()
-    |> Enum.flat_map(fn {_category, data} ->
-      Map.values(data.providers)
-    end)
-  end
-
-  @doc """
-  Returns providers grouped by their market segment
-  """
-  def providers_by_market_segment do
-    all_providers()
-    |> Enum.group_by(fn provider ->
-      Map.get(provider, :market_segment, :unknown)
-    end)
-  end
-
-  @doc """
-  Returns list of all unique provider domains
-  """
-  def known_domains do
-    categories()
-    |> Enum.flat_map(fn {_category, data} ->
-      Map.keys(data.providers)
-    end)
-    |> Enum.uniq()
-  end
-
-  @doc """
-  Returns category information for a specific provider domain
-  """
-  def get_provider_category(domain) do
-    categories()
-    |> Enum.find(fn {_category, data} ->
-      Map.has_key?(data.providers, domain)
-    end)
-  end
-
-  @doc """
-  Returns list of all available market segments
-  """
-  def market_segments do
-    [:enterprise, :business, :consumer, :security_focused, :infrastructure]
   end
 end

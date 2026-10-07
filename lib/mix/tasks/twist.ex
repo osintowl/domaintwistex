@@ -8,47 +8,68 @@ defmodule Mix.Tasks.Twist do
 
   ## Options
 
-      -c, --concurrency NUM   Number of concurrent checks (default: CPU * 2)
-      -t, --timeout MS        Timeout per domain in ms (default: 15000)
-      -w, --whois             Enable WHOIS/RDAP lookups (slower)
+      -c, --concurrency NUM   Concurrent enrichments (default: max(CPU * 4, 16))
+      --dns-concurrency NUM   Concurrent DNS existence probes (default: 200, capped at 40 per resolver)
+      -t, --timeout MS        Enrichment budget per domain in ms (default: 15000)
+      --dns-timeout MS        Timeout per DNS query in ms (default: 5000)
+      -n, --nameserver IP     Resolver to use (repeatable). Default: 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 9.9.9.10
+      --system-dns            Use the system resolver instead of the public pool
+      --no-whois              Skip WHOIS/RDAP lookups (faster; on by default)
       --mx-only               Only show domains with MX records
+      --priority-keywords     Use only high-priority phishing keywords (faster)
+      --all-tlds              Use the full public suffix list for TLD swaps (~7K)
+      --faux-tld              Include FauxTld permutations
+      --vowel-shuffle         Include VowelShuffle permutations
+      -k, --kinds LIST        Only these kinds, comma-separated (e.g. homoglyph,bitsquatting)
       -f, --format FORMAT     Output format: table, json, csv (default: table)
       -o, --output FILE       Write results to file
 
   ## Examples
 
       mix twist example.com
-      mix twist -c 100 -w example.com
+      mix twist -c 100 --no-whois example.com
+      mix twist -n 1.1.1.1 -n 8.8.8.8 example.com
+      mix twist --system-dns example.com
       mix twist --format json -o results.json example.com
+      mix twist --mx-only --priority-keywords example.com
+      mix twist -k homoglyph,bitsquatting example.com
+
   """
 
   use Mix.Task
 
-  @shortdoc "Scan domain permutations"
-
-  @default_concurrency System.schedulers_online() * 2
-  @default_timeout 15_000
+  @shortdoc "Scan domain permutations for typosquatting detection"
 
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, args, _} =
+    {opts, args, invalid} =
       OptionParser.parse(args,
         strict: [
           help: :boolean,
           concurrency: :integer,
+          dns_concurrency: :integer,
           timeout: :integer,
+          dns_timeout: :integer,
+          nameserver: :keep,
+          system_dns: :boolean,
           whois: :boolean,
           format: :string,
           output: :string,
-          mx_only: :boolean
+          mx_only: :boolean,
+          priority_keywords: :boolean,
+          all_tlds: :boolean,
+          faux_tld: :boolean,
+          vowel_shuffle: :boolean,
+          kinds: :string
         ],
         aliases: [
           h: :help,
           c: :concurrency,
           t: :timeout,
-          w: :whois,
+          n: :nameserver,
+          k: :kinds,
           o: :output,
           f: :format
         ]
@@ -56,6 +77,10 @@ defmodule Mix.Tasks.Twist do
 
     cond do
       Keyword.get(opts, :help, false) ->
+        Mix.shell().info(@moduledoc)
+
+      invalid != [] ->
+        Mix.shell().error("Invalid options: #{Enum.map_join(invalid, ", ", &elem(&1, 0))}\n")
         Mix.shell().info(@moduledoc)
 
       args == [] ->
@@ -68,46 +93,73 @@ defmodule Mix.Tasks.Twist do
   end
 
   defp run_scan(opts, domain) do
-    concurrency = Keyword.get(opts, :concurrency, @default_concurrency)
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
-    include_whois = Keyword.get(opts, :whois, false)
+    defaults = DomainTwistex.Twist.default_opts()
     format = Keyword.get(opts, :format, "table")
     output_file = Keyword.get(opts, :output)
     mx_only = Keyword.get(opts, :mx_only, false)
+    nameservers = Keyword.get_values(opts, :nameserver)
+    system_dns = Keyword.get(opts, :system_dns, false)
+
+    scan_opts =
+      [
+        max_concurrency: Keyword.get(opts, :concurrency, defaults[:max_concurrency]),
+        dns_concurrency: Keyword.get(opts, :dns_concurrency, defaults[:dns_concurrency]),
+        timeout: Keyword.get(opts, :timeout, defaults[:timeout]),
+        dns_timeout: Keyword.get(opts, :dns_timeout, defaults[:dns_timeout]),
+        whois: Keyword.get(opts, :whois, defaults[:whois]),
+        priority_keywords_only: Keyword.get(opts, :priority_keywords, false),
+        tlds: if(Keyword.get(opts, :all_tlds, false), do: :all, else: :common),
+        faux_tld: Keyword.get(opts, :faux_tld, false),
+        vowel_shuffle: Keyword.get(opts, :vowel_shuffle, false),
+        kinds: parse_kinds(Keyword.get(opts, :kinds))
+      ]
+
+    scan_opts =
+      cond do
+        nameservers != [] -> Keyword.put(scan_opts, :nameservers, nameservers)
+        system_dns -> Keyword.put(scan_opts, :nameservers, nil)
+        true -> scan_opts
+      end
+
+    resolvers =
+      case Keyword.get(scan_opts, :nameservers, :default) do
+        :default -> Enum.join(DomainTwistex.DNS.public_nameservers(), ", ")
+        nil -> "system"
+        list -> Enum.join(list, ", ")
+      end
 
     IO.puts("\n#{IO.ANSI.cyan()}DomainTwistex Scanner#{IO.ANSI.reset()}")
     IO.puts(String.duplicate("=", 50))
     IO.puts("Target: #{IO.ANSI.green()}#{domain}#{IO.ANSI.reset()}")
-    IO.puts("Concurrency: #{concurrency}")
-    IO.puts("Timeout: #{timeout}ms")
-    IO.puts("WHOIS: #{if include_whois, do: "enabled", else: "disabled"}")
+
+    IO.puts(
+      "Concurrency: #{scan_opts[:max_concurrency]} (DNS: #{DomainTwistex.Twist.dns_probe_concurrency(scan_opts)})"
+    )
+
+    IO.puts("Timeout: #{scan_opts[:timeout]}ms")
+    IO.puts("Resolvers: #{resolvers}")
+    IO.puts("TLDs: #{scan_opts[:tlds]}")
+    IO.puts("WHOIS: #{if scan_opts[:whois], do: "enabled", else: "disabled"}")
+    IO.puts("MX Only: #{if mx_only, do: "yes", else: "no"}")
     IO.puts(String.duplicate("=", 50))
+    IO.puts("\nGenerating permutations and scanning...\n")
 
-    results =
-      DomainTwistex.Twist.analyze_domain(domain,
-        max_concurrency: concurrency,
-        timeout: timeout,
-        whois: include_whois
-      )
+    results = DomainTwistex.analyze(domain, scan_opts)
+    stats = results.stats
 
-    permutations =
-      if mx_only do
-        Enum.filter(results.permutations, &(not Enum.empty?(&1.mx_records)))
-      else
-        Enum.filter(results.permutations, & &1.resolvable)
-      end
+    permutations = Enum.filter(results.permutations, &(not mx_only or &1.mx_records != []))
 
-    IO.puts("\nScanning domains...\n")
-
-    IO.puts("")
     IO.puts(String.duplicate("=", 50))
     IO.puts("#{IO.ANSI.green()}Scan complete!#{IO.ANSI.reset()}")
-    IO.puts("Total permutations: #{results.stats.total}")
-    IO.puts("Resolvable found: #{results.stats.resolvable}")
-    IO.puts("Elapsed time: #{format_elapsed(results.stats.elapsed_ms)}")
+    IO.puts("Domain: #{results.domain}")
+    IO.puts("Total permutations: #{stats.total}")
+    IO.puts("Registered: #{stats.found} (resolvable: #{stats.resolvable}, with MX: #{stats.mx})")
+    IO.puts("Filtered wildcards: #{stats.wildcard_filtered}")
+    IO.puts("DNS errors: #{stats.dns_errors}, timeouts: #{stats.timeouts}")
+    IO.puts("Elapsed time: #{format_elapsed(stats.elapsed_ms)}")
     IO.puts(String.duplicate("=", 50))
 
-    if length(permutations) > 0 do
+    if permutations != [] do
       IO.puts("\n#{IO.ANSI.cyan()}Results:#{IO.ANSI.reset()}\n")
 
       case format do
@@ -116,95 +168,118 @@ defmodule Mix.Tasks.Twist do
         _ -> output_table(permutations, output_file)
       end
     else
-      IO.puts("\nNo resolvable domains found.")
+      IO.puts("\nNo matching domains found.")
     end
   end
 
-  defp output_table(results, output_file) do
-    sorted = Enum.sort_by(results, & &1.kind)
+  defp parse_kinds(nil), do: nil
 
-    lines = [
+  defp parse_kinds(kinds) do
+    valid = MapSet.new(DomainTwistex.Permutate.kinds())
+
+    kinds
+    |> String.split(",", trim: true)
+    |> Enum.map(&(&1 |> String.trim() |> Macro.camelize()))
+    |> tap(fn names ->
+      case Enum.reject(names, &MapSet.member?(valid, &1)) do
+        [] -> :ok
+        bad -> Mix.raise("Unknown kinds: #{Enum.join(bad, ", ")}")
+      end
+    end)
+  end
+
+  defp output_table(results, output_file) do
+    header =
       String.pad_trailing("KIND", 15) <>
         String.pad_trailing("DOMAIN", 40) <>
-        String.pad_trailing("IPs", 20) <>
-        String.pad_trailing("FLAGS", 15) <>
-        "MX",
-      String.duplicate("-", 110)
-    ]
+        String.pad_trailing("IPs", 34) <>
+        "MX"
 
     result_lines =
-      Enum.map(sorted, fn r ->
-        ips = (r.public_ips ++ r.internal_ips) |> Enum.take(2) |> Enum.join(", ")
+      Enum.map(results, fn r ->
+        ips = r.ip_addresses |> Enum.take(2) |> Enum.join(", ")
         ips = if length(r.ip_addresses) > 2, do: ips <> "...", else: ips
-
-        flags =
-          case r.ip_flags do
-            [] -> ""
-            f -> f |> Enum.map(&Atom.to_string/1) |> Enum.join(",")
-          end
 
         mx =
           case r.mx_records do
             [] -> "-"
-            [first | _] -> first.server |> String.slice(0, 25)
+            [first | _] -> String.slice(first.server, 0, 25)
           end
 
+        name = if r[:unicode], do: "#{r.unicode} (#{r.fqdn})", else: r.fqdn
+
         String.pad_trailing(r.kind, 15) <>
-          String.pad_trailing(r.fqdn, 40) <>
-          String.pad_trailing(ips, 20) <>
-          String.pad_trailing(flags, 15) <>
+          String.pad_trailing(name, 40) <>
+          String.pad_trailing(ips, 34) <>
           mx
       end)
 
-    all_lines = lines ++ result_lines
-    output = Enum.join(all_lines, "\n")
-
-    if output_file do
-      File.write!(output_file, output)
-      IO.puts("Results written to #{output_file}")
-    else
-      IO.puts(output)
-    end
+    write_output(
+      Enum.join([header, String.duplicate("-", 120) | result_lines], "\n"),
+      output_file
+    )
 
     IO.puts("\nTotal: #{length(results)} domains")
   end
 
   defp output_json(results, output_file) do
-    json = encode_json(results)
-
-    if output_file do
-      File.write!(output_file, json)
-      IO.puts("Results written to #{output_file}")
-    else
-      IO.puts(json)
-    end
+    results
+    |> Jason.encode!(pretty: true)
+    |> write_output(output_file)
   end
 
-  defp output_csv(results, output_file) do
-    headers =
-      "kind,fqdn,ip_addresses,public_ips,internal_ips,ip_flags,mx_records,nameservers,resolvable\n"
+  @csv_headers ~w(kind fqdn unicode ip_addresses public_ips internal_ips ip_flags
+                  mx_records nameservers http_status https_status title tls_issuer
+                  tls_age_days registrar creation_date)
 
+  defp output_csv(results, output_file) do
     rows =
       Enum.map(results, fn r ->
-        ips = Enum.join(r.ip_addresses, ";")
-        public = Enum.join(r.public_ips, ";")
-        internal = Enum.join(r.internal_ips, ";")
-        flags = r.ip_flags |> Enum.map(&Atom.to_string/1) |> Enum.join(";")
-        mx = r.mx_records |> Enum.map(& &1.server) |> Enum.join(";")
-        ns = Enum.join(r.nameservers, ";")
+        server = if is_map(r.server_response), do: r.server_response, else: %{}
+        http = Map.get(server, :http) || %{}
+        https = Map.get(server, :https) || %{}
+        tls = Map.get(server, :tls) || %{}
+        whois = r.whois || %{}
 
-        "#{r.kind},#{r.fqdn},\"#{ips}\",\"#{public}\",\"#{internal}\",\"#{flags}\",\"#{mx}\",\"#{ns}\",#{r.resolvable}"
+        [
+          r.kind,
+          r.fqdn,
+          r[:unicode],
+          Enum.join(r.ip_addresses, ";"),
+          Enum.join(r.public_ips, ";"),
+          Enum.join(r.internal_ips, ";"),
+          Enum.join(r.ip_flags, ";"),
+          r.mx_records |> Enum.map(& &1.server) |> Enum.join(";"),
+          Enum.join(r.nameservers, ";"),
+          http[:status_code],
+          https[:status_code],
+          https[:title] || http[:title],
+          tls[:issuer],
+          tls[:age_days],
+          whois[:registrar],
+          whois[:creation_date]
+        ]
+        |> Enum.map_join(",", &csv_field/1)
       end)
-      |> Enum.join("\n")
 
-    csv = headers <> rows
+    write_output(Enum.join([Enum.join(@csv_headers, ",") | rows], "\n"), output_file)
+  end
 
-    if output_file do
-      File.write!(output_file, csv)
-      IO.puts("Results written to #{output_file}")
-    else
-      IO.puts(csv)
-    end
+  defp csv_field(nil), do: ""
+
+  defp csv_field(value) do
+    value = to_string(value)
+
+    if String.contains?(value, [",", "\"", "\n", "\r"]),
+      do: "\"" <> String.replace(value, "\"", "\"\"") <> "\"",
+      else: value
+  end
+
+  defp write_output(output, nil), do: IO.puts(output)
+
+  defp write_output(output, file) do
+    File.write!(file, output)
+    IO.puts("Results written to #{file}")
   end
 
   defp format_elapsed(ms) when ms < 1_000, do: "#{ms}ms"
@@ -215,29 +290,4 @@ defmodule Mix.Tasks.Twist do
     seconds = Float.round(rem(ms, 60_000) / 1_000, 1)
     "#{minutes}m #{seconds}s"
   end
-
-  defp encode_json(data) when is_list(data) do
-    items = Enum.map(data, &encode_json/1) |> Enum.join(",")
-    "[#{items}]"
-  end
-
-  defp encode_json(data) when is_map(data) do
-    items =
-      data
-      |> Enum.filter(fn {_k, v} -> v != nil end)
-      |> Enum.map(fn {k, v} -> "\"#{k}\":#{encode_json(v)}" end)
-      |> Enum.join(",")
-
-    "{#{items}}"
-  end
-
-  defp encode_json(data) when is_binary(data) do
-    escaped = data |> String.replace("\\", "\\\\") |> String.replace("\"", "\\\"")
-    "\"#{escaped}\""
-  end
-
-  defp encode_json(data) when is_atom(data), do: "\"#{data}\""
-  defp encode_json(data) when is_number(data), do: "#{data}"
-  defp encode_json(data) when is_boolean(data), do: "#{data}"
-  defp encode_json(nil), do: "null"
 end
