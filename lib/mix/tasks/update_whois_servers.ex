@@ -46,7 +46,7 @@ defmodule Mix.Tasks.UpdateWhoisServers do
   end
 
   defp fetch_and_parse do
-    case Req.get(@iana_whois_conf_url, receive_timeout: 30_000) do
+    case Req.get(@iana_whois_conf_url, compressed: false, receive_timeout: 30_000) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         servers = parse_whois_conf(body)
         {:ok, servers}
