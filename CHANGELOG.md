@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.0.1
+
+### Security
+
+- Raise the Req requirement to `~> 0.6.1 or ~> 0.7`. Req 0.5.16, and every other 0.5 release plus 0.6.0, unpacks archive and compressed response bodies by default (CVE-2026-49755, high) and Req 0.5.3 through 0.5.18 can inject multipart headers (CVE-2026-49756, low). 0.6.1 is the first release that fixes both. 0.6 and 0.7 stay allowed so a host application can share one Req.
+- Depend on Mint `>= 1.10.2 and < 2.0.0` and hpax `>= 1.0.4 and < 2.0.0`. The previously locked Mint 1.7.1 is affected by the HTTP/1 and HTTP/2 client advisories fixed in 1.10.2, including CVE-2026-82672, CVE-2026-49753, CVE-2026-91043, CVE-2026-92103, and CVE-2026-94194. hpax 1.0.3 is affected by CVE-2026-58226. Finch 0.21 and older cannot select those Mint releases, so the floors are direct dependencies. Mint 1.10 and 1.11 both stay allowed.
+- RDAP and WHOIS-bootstrap requests pass `compressed: false`, so Req does not ask a remote server for a body it would inflate without a size cap.
+
+### Dependencies
+
+- Lock the HTTP stack at Req 0.7.5, Finch 0.24.0, Mint 1.11.0, and hpax 1.1.0. Jason is locked at 1.4.5.
+- Development docs may use ex_doc `~> 0.39` or `~> 0.40`. The lock uses ex_doc 0.40.4, which also updates earmark_parser, makeup, makeup_erlang, nimble_options, nimble_pool, and telemetry.
+
 ## v1.0.0
 
 First stable release! The library has been extensively refactored and is now production-ready.

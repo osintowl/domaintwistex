@@ -130,7 +130,10 @@ defmodule DomainTwistex.Whois do
 
     with {:ok, servers} <- rdap_servers(),
          {:ok, base_url} <- Map.fetch(servers, tld) |> or_error("No RDAP server found for TLD: #{tld}") do
+      # Do not advertise Accept-Encoding. Req inflates only when
+      # compressed: true, and that path has no size cap.
       case Req.get(base_url <> "domain/" <> domain,
+             compressed: false,
              receive_timeout: 5_000,
              retry: :transient,
              retry_delay: fn attempt -> min(1000 * attempt, 5_000) end,
@@ -190,7 +193,12 @@ defmodule DomainTwistex.Whois do
 
   defp fetch_and_cache_bootstrap do
     result =
-      case Req.get(@iana_rdap_bootstrap_url, receive_timeout: 10_000, retry: :transient, max_retries: 2) do
+      case Req.get(@iana_rdap_bootstrap_url,
+             compressed: false,
+             receive_timeout: 10_000,
+             retry: :transient,
+             max_retries: 2
+           ) do
         {:ok, %Req.Response{status: 200, body: %{"services" => services}}} ->
           {:ok, index_services(services)}
 
