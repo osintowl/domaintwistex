@@ -4,16 +4,16 @@ DomainTwistex is a pure Elixir library for domain name permutation generation an
 
 ## Features
 
-- **18 permutation algorithms** — Addition, Bitsquatting, Hyphenation, HyphenationTldBoundary, Insertion, Omission, Repetition, Replacement, Subdomain, Transposition, VowelSwap, VowelShuffle, DoubleVowelInsertion, Keyword, TLD, FauxTLD, Mapped, and Homoglyph
-- **IDN-aware** — homoglyph permutations are punycode-encoded (`xn--`) so they actually resolve; the Unicode form is kept for display
-- **Public-suffix aware** — `https://mail.example.co.uk/login` is analyzed as `example.co.uk`
-- **Two-stage scanning** — one cheap A query per permutation at high concurrency, full enrichment only for registered names
-- **Registered, not just resolving** — NOERROR vs NXDOMAIN detection finds MX-only and parked domains, not only ones with A records
-- **Registry wildcard filtering** — discards hits that only resolve because their TLD answers for every name
-- **DNS enrichment** — A/AAAA/CNAME/MX/TXT/DMARC/NS/wildcard with EDNS0, TCP fallback on truncation, retries, and custom resolvers
-- **HTTP/TLS probing** — status, `Server`, `Location`, page title, and certificate issuer/SANs/age over HTTP and HTTPS
-- **WHOIS/RDAP enrichment** — registrar and date lookups via RDAP-first, WHOIS-fallback (on by default)
-- **Baseline comparison data** — the original domain is enriched too, so you can compare nameservers, IPs, and MX
+- **20 permutation algorithms** - Addition, Bitsquatting, Hyphenation, HyphenationTldBoundary, Insertion, Omission, Repetition, Replacement, Subdomain, Transposition, VowelSwap, VowelShuffle, DoubleVowelInsertion, Keyword, Compound, TLD, FauxTLD, Mapped, Homoglyph (Latin + Cyrillic), and Hosted
+- **IDN-aware** - homoglyph permutations are punycode-encoded (`xn--`) so they actually resolve; the Unicode form is kept for display
+- **Public-suffix aware** - `https://mail.example.co.uk/login` is analyzed as `example.co.uk`
+- **Two-stage scanning** - one cheap A query per permutation at high concurrency, full enrichment only for registered names
+- **Registered, not just resolving** - NOERROR vs NXDOMAIN detection finds MX-only and parked domains, not only ones with A records
+- **Registry wildcard filtering** - discards hits that only resolve because their TLD answers for every name
+- **DNS enrichment** - A/AAAA/CNAME/MX/TXT/DMARC/NS/wildcard with EDNS0, TCP fallback on truncation, retries, and custom resolvers
+- **HTTP/TLS probing** - status, `Server`, `Location`, page title, and certificate issuer/SANs/age over HTTP and HTTPS
+- **WHOIS/RDAP enrichment** - registrar, creation date, and domain `age_days` via RDAP-first, WHOIS-fallback (on by default)
+- **Baseline comparison & posture signals** - enriches the original domain as a baseline and tags hits with `shares_nameservers`, `shares_ips`, `shares_mx`, `redirects_to_original`, `has_mx`, and `web_only`
 - **Fuzzy matching scores** — Jaro, Levenshtein, character diff, keyboard proximity
 - **SPF record parsing** — full RFC 7208 terms, lookup counting, warnings, and provider categorization
 - **Partial results** — slow lookups never drop a domain; timed-out checks are reported per result
@@ -27,7 +27,7 @@ Add `domaintwistex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:domaintwistex, "~> 0.10.0"}
+    {:domaintwistex, "~> 1.1"}
   ]
 end
 ```
@@ -142,12 +142,21 @@ mix twist -k homoglyph,bitsquatting example.com
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `tlds` | `:common` | `:common` (~150 curated), `:all` (~7K public suffixes), or a list |
+| `tlds` | `:common` | `:common` (~160 curated), `:all` (~7K public suffixes), or a list |
 | `kinds` | all | Only these kinds, e.g. `[:homoglyph, "Tld"]` |
 | `faux_tld` | `false` | Include FauxTld permutations |
 | `double_vowel` | `true` | Include DoubleVowelInsertion |
 | `vowel_shuffle` | `false` | Include VowelShuffle (up to 625 entries) |
-| `priority_keywords_only` | `false` | Only use high-value phishing keywords |
+| `keywords` | `:default` | `:default` (full built-in list), `:priority`, or a custom list of strings |
+| `priority_keywords_only` | `false` | Alias for `keywords: :priority` |
+| `extra_keywords` | `[]` | Additional keyword strings appended to `keywords` |
+| `aliases` | `[]` | Brand tickers or short names (e.g. `["vrtx"]`) run through `Keyword`, `Compound`, and `Hosted` |
+| `keyword_tlds` | `:default` | `:default` (adds `.com` priority pass for non-`.com` targets), `[]`, or a list of TLDs |
+| `keyword_tlds_scope` | `:active` | `:active` or `:priority` for explicit `keyword_tlds` |
+| `compound` | `true` | Include two-sided `Compound` wrappers (`my{b}sso`, `on{b}zendesk`, etc.) |
+| `cyrillic` | `true` | Include Cyrillic single-character and whole-script homoglyphs |
+| `hosted` | `false` | Include `Hosted` PaaS subdomain candidates (`connect-pages-{b}.pages.dev`, etc.) |
+| `hosted_suffixes` | `["pages.dev"]` | PaaS suffixes used when `hosted` is enabled |
 
 ## Inspection Results
 
@@ -172,12 +181,13 @@ Each permutation result includes:
 | `dmarc` | map | DMARC policy |
 | `nameservers` | [string] | Name servers |
 | `wildcard` | boolean | Whether wildcard DNS is configured under the domain |
-| `server_response` | map | `%{http: ..., https: ..., tls: ...}` — status, server, location, title, certificate |
-| `whois` | map or nil | WHOIS data (registrar, dates); nil if disabled or the lookup failed |
+| `server_response` | map | `%{http: ..., https: ..., tls: ...}` - status, server, location, title, certificate |
+| `whois` | map or nil | WHOIS/RDAP data (registrar, dates, `age_days`); nil if disabled or the lookup failed |
+| `signals` | map | Baseline/posture flags (`shares_nameservers`, `shares_ips`, `shares_mx`, `redirects_to_original`, `has_mx`, `web_only`) |
 | `fuzzy` | map | Similarity scores |
 | `timed_out` | [atom] | Checks that didn't finish within the budget |
 
-Results where `wildcard: true` and `public_ips: []` are filtered out, as are hits whose IPs match their TLD's registry wildcard.
+Results where `wildcard: true`, `public_ips: []`, and `mx_records: []` are filtered out, as are hits whose IPs match their TLD's registry wildcard.
 
 ## Permutation Types
 
@@ -196,11 +206,13 @@ Results where `wildcard: true` and `public_ips: []` are filtered out, as are hit
 | VowelSwap | Replace vowels with other vowels |
 | VowelShuffle | Combinatorial vowel replacement (opt-in) |
 | DoubleVowelInsertion | Insert vowels between vowel pairs |
-| Keyword | Prepend/append common keywords |
+| Keyword | Prepend/append phishing, SSO, IT, recruiting, and legal keywords |
+| Compound | Two-sided and multi-affix combosquat templates |
 | Tld | Replace TLD with common (or all) TLDs |
 | FauxTld | TLD-like strings appended to the name (opt-in) |
-| Mapped | Character substitutions (l→1, o→0, etc.) at each occurrence |
-| Homoglyph | Unicode look-alike character substitution |
+| Mapped | Character substitutions (l->1, o->0, etc.) at each occurrence |
+| Homoglyph | Latin and Cyrillic Unicode look-alike character substitution |
+| Hosted | Brand subdomains on free-hosting / PaaS suffixes (opt-in) |
 
 ## Modules
 

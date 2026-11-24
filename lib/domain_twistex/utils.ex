@@ -133,26 +133,30 @@ defmodule DomainTwistex.Utils do
     {results, timed_out} = run_parallel(jobs, budget)
 
     ips = classify_ips(probe.ips ++ results.aaaa)
+    spf = spf_or_nil(results.txt)
 
-    Map.merge(permutation, %{
-      registered: true,
-      resolvable: ips.ips != [],
-      cname: probe.cname,
-      ip_addresses: ips.ips,
-      public_ips: ips.public_ips,
-      internal_ips: ips.internal_ips,
-      ip_flags: Enum.uniq(v4.flags ++ ips.flags),
-      mx_records: results.mx,
-      txt_records: results.txt,
-      spf_records: spf_or_nil(results.txt),
-      dmarc: results.dmarc,
-      server_response: results.http,
-      nameservers: results.ns,
-      wildcard: results.wildcard,
-      whois: Map.get(results, :whois),
-      fuzzy: calculate_fuzzy_scores(context.domain, Map.get(permutation, :unicode, fqdn)),
-      timed_out: timed_out
-    })
+    enriched =
+      Map.merge(permutation, %{
+        registered: true,
+        resolvable: ips.ips != [],
+        cname: probe.cname,
+        ip_addresses: ips.ips,
+        public_ips: ips.public_ips,
+        internal_ips: ips.internal_ips,
+        ip_flags: Enum.uniq(v4.flags ++ ips.flags),
+        mx_records: results.mx,
+        txt_records: results.txt,
+        spf_records: spf,
+        dmarc: results.dmarc,
+        server_response: results.http,
+        nameservers: results.ns,
+        wildcard: results.wildcard,
+        whois: Map.get(results, :whois),
+        fuzzy: calculate_fuzzy_scores(context.domain, Map.get(permutation, :unicode, fqdn)),
+        timed_out: timed_out
+      })
+
+    Map.put(enriched, :signals, compute_signals(enriched, context))
   end
 
   @doc """
@@ -162,25 +166,32 @@ defmodule DomainTwistex.Utils do
   def minimal_result(permutation, probe, context) do
     ips = classify_ips(probe.ips)
 
-    Map.merge(permutation, %{
-      registered: true,
-      resolvable: ips.ips != [],
-      cname: probe.cname,
-      ip_addresses: ips.ips,
-      public_ips: ips.public_ips,
-      internal_ips: ips.internal_ips,
-      ip_flags: ips.flags,
-      mx_records: [],
-      txt_records: [],
-      spf_records: nil,
-      dmarc: %{},
-      server_response: skipped("enrichment timed out"),
-      nameservers: [],
-      wildcard: false,
-      whois: nil,
-      fuzzy: calculate_fuzzy_scores(context.domain, Map.get(permutation, :unicode, permutation.fqdn)),
-      timed_out: [:enrichment]
-    })
+    minimal =
+      Map.merge(permutation, %{
+        registered: true,
+        resolvable: ips.ips != [],
+        cname: probe.cname,
+        ip_addresses: ips.ips,
+        public_ips: ips.public_ips,
+        internal_ips: ips.internal_ips,
+        ip_flags: ips.flags,
+        mx_records: [],
+        txt_records: [],
+        spf_records: nil,
+        dmarc: %{},
+        server_response: skipped("enrichment timed out"),
+        nameservers: [],
+        wildcard: false,
+        whois: nil,
+        fuzzy:
+          calculate_fuzzy_scores(
+            context.domain,
+            Map.get(permutation, :unicode, permutation.fqdn)
+          ),
+        timed_out: [:enrichment]
+      })
+
+    Map.put(minimal, :signals, compute_signals(minimal, context))
   end
 
   defp http_check(fqdn, v4_ips, dns_opts, opts) do
@@ -207,7 +218,10 @@ defmodule DomainTwistex.Utils do
 
   # Runs {key, fun, default} jobs concurrently under one time budget
   defp run_parallel(jobs, budget) do
-    tasks = Enum.map(jobs, fn {key, fun, default} -> {key, default, Task.async(fn -> safe_call(fun, default) end)} end)
+    tasks =
+      Enum.map(jobs, fn {key, fun, default} ->
+        {key, default, Task.async(fn -> safe_call(fun, default) end)}
+      end)
 
     tasks
     |> Enum.map(&elem(&1, 2))
@@ -244,6 +258,7 @@ defmodule DomainTwistex.Utils do
         %{
           registrar: data[:registrar],
           creation_date: data[:creation_date],
+          age_days: data[:age_days],
           expiration_date: data[:expiration_date],
           registered: data[:registered],
           source: data[:source]
@@ -253,6 +268,85 @@ defmodule DomainTwistex.Utils do
         nil
     end
   end
+
+  @doc """
+  Computes deterministic baseline-comparison and posture signals for an enriched hit.
+
+  Returns a map with boolean flags:
+    * `:shares_nameservers` - Overlaps with `:original` nameservers
+    * `:shares_ips` - Overlaps with `:original` public IPs
+    * `:shares_mx` - Overlaps with `:original` MX servers
+    * `:redirects_to_original` - HTTP or HTTPS `Location` redirects to `:domain`
+    * `:has_mx` - Publishes at least one MX record
+    * `:web_only` - Has public IPs with no MX, SPF, or DMARC records
+
+  """
+  @spec compute_signals(map(), map()) :: map()
+  def compute_signals(hit, context) do
+    original = Map.get(context, :original) || %{}
+    mx = Map.get(hit, :mx_records, [])
+    public_ips = Map.get(hit, :public_ips, [])
+    dmarc = Map.get(hit, :dmarc, %{})
+
+    %{
+      shares_nameservers:
+        overlap?(
+          downcase_list(Map.get(hit, :nameservers, [])),
+          downcase_list(Map.get(original, :nameservers, []))
+        ),
+      shares_ips: overlap?(public_ips, Map.get(original, :public_ips, [])),
+      shares_mx: overlap?(mx_servers(mx), mx_servers(Map.get(original, :mx_records, []))),
+      redirects_to_original:
+        redirects_to_domain?(Map.get(hit, :server_response), Map.get(context, :domain)),
+      has_mx: mx != [],
+      web_only:
+        public_ips != [] and mx == [] and Map.get(hit, :spf_records) == nil and
+          not valid_dmarc?(dmarc)
+    }
+  end
+
+  defp overlap?([], _), do: false
+  defp overlap?(_, []), do: false
+  defp overlap?(a, b), do: not MapSet.disjoint?(MapSet.new(a), MapSet.new(b))
+
+  defp downcase_list(list) when is_list(list), do: Enum.map(list, &String.downcase(to_string(&1)))
+  defp downcase_list(_), do: []
+
+  defp mx_servers(records) when is_list(records) do
+    for %{server: s} <- records, is_binary(s) and s != "", do: String.downcase(s)
+  end
+
+  defp mx_servers(_), do: []
+
+  defp valid_dmarc?(dmarc) when is_map(dmarc),
+    do: map_size(dmarc) > 0 and not Map.has_key?(dmarc, :error)
+
+  defp valid_dmarc?(_), do: false
+
+  defp redirects_to_domain?(server_response, target_domain)
+       when is_map(server_response) and is_binary(target_domain) and target_domain != "" do
+    target_reg = target_domain |> Domain.normalize() |> Domain.registrable()
+
+    [server_response[:http], server_response[:https]]
+    |> Enum.any?(fn
+      %{location: loc} when is_binary(loc) ->
+        trimmed = String.trim(loc)
+
+        if String.match?(trimmed, ~r{^(https?://|//)}i) do
+          candidate =
+            if String.starts_with?(trimmed, "//"), do: "https:" <> trimmed, else: trimmed
+
+          candidate |> Domain.normalize() |> Domain.registrable() == target_reg
+        else
+          false
+        end
+
+      _ ->
+        false
+    end)
+  end
+
+  defp redirects_to_domain?(_, _), do: false
 
   # =============================================================================
   # Fuzzy matching

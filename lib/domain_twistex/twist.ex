@@ -33,6 +33,15 @@ defmodule DomainTwistex.Twist do
     :double_vowel,
     :vowel_shuffle,
     :priority_keywords_only,
+    :keywords,
+    :extra_keywords,
+    :aliases,
+    :keyword_tlds,
+    :keyword_tlds_scope,
+    :compound,
+    :cyrillic,
+    :hosted,
+    :hosted_suffixes,
     :kinds
   ]
   @dns_keys [:nameservers, :dns_timeout, :retries]
@@ -75,6 +84,15 @@ defmodule DomainTwistex.Twist do
       double_vowel: true,
       vowel_shuffle: false,
       priority_keywords_only: false,
+      keywords: :default,
+      extra_keywords: [],
+      aliases: [],
+      keyword_tlds: :default,
+      keyword_tlds_scope: :active,
+      compound: true,
+      cyrillic: true,
+      hosted: false,
+      hosted_suffixes: ["pages.dev"],
       kinds: nil
     ]
   end
@@ -101,7 +119,9 @@ defmodule DomainTwistex.Twist do
       * `:ordered` - Return results in permutation order instead of grouped
         by kind (default: false)
       * Permutation options: `:tlds`, `:faux_tld`, `:double_vowel`,
-        `:vowel_shuffle`, `:priority_keywords_only`, `:kinds` — see
+        `:vowel_shuffle`, `:keywords`, `:priority_keywords_only`,
+        `:extra_keywords`, `:aliases`, `:keyword_tlds`, `:keyword_tlds_scope`,
+        `:compound`, `:cyrillic`, `:hosted`, `:hosted_suffixes`, `:kinds` — see
         `DomainTwistex.Permutate.generate_permutations/2`
 
   ## Returns
@@ -389,7 +409,7 @@ defmodule DomainTwistex.Twist do
     original =
       case DNS.probe(ascii, dns_opts) do
         {:ok, probe} ->
-          base |> Utils.enrich(probe, context, opts) |> Map.delete(:fuzzy)
+          base |> Utils.enrich(probe, context, opts) |> Map.drop([:fuzzy, :signals])
 
         {:error, :nxdomain} ->
           Map.merge(base, %{registered: false, resolvable: false})
@@ -586,7 +606,7 @@ defmodule DomainTwistex.Twist do
     )
     |> Stream.map(fn
       {:ok, {:result, result}} ->
-        if result.wildcard and result.public_ips == [],
+        if drop_wildcard_hit?(result),
           do: {:skip, :wildcard},
           else: {:result, result}
 
@@ -599,6 +619,11 @@ defmodule DomainTwistex.Twist do
       {:exit, {skip, _reason}} ->
         skip
     end)
+  end
+
+  @doc false
+  def drop_wildcard_hit?(result) do
+    result.wildcard == true and result.public_ips == [] and result.mx_records == []
   end
 
   # Deterministic output: permutation order with `ordered: true`, otherwise

@@ -2,8 +2,9 @@ defmodule DomainTwistex.Permutate do
   @moduledoc """
   Pure Elixir domain permutation generator.
 
-  Generates domain permutations using 18 different algorithms to detect
-  potential typosquatting, homograph attacks, and other domain abuse patterns.
+  Generates domain permutations using 20 different algorithms to detect
+  potential typosquatting, combosquatting, homograph attacks, and other
+  domain abuse patterns.
 
   Input is normalized (lowercased, URL parts stripped) and reduced to its
   registrable domain using the public suffix list, so `https://mail.example.co.uk/`
@@ -18,7 +19,7 @@ defmodule DomainTwistex.Permutate do
 
     * Addition - Appending a-z to domain
     * Bitsquatting - Single bit flips in characters
-    * Homoglyph - Visually similar Unicode characters
+    * Homoglyph - Visually similar Latin and Cyrillic Unicode characters
     * Hyphenation - Adding hyphens between characters
     * HyphenationTldBoundary - Hyphen at TLD boundary
     * Insertion - Keyboard-adjacent character insertions
@@ -30,10 +31,12 @@ defmodule DomainTwistex.Permutate do
     * VowelSwap - Replacing vowels with other vowels
     * VowelShuffle - All vowel combinations (optional, limited)
     * DoubleVowelInsertion - Insert vowel between adjacent vowels
-    * Keyword - Common phishing keywords
+    * Keyword - Common phishing, recruiting, SSO, IT, and legal keywords
+    * Compound - Two-sided and multi-affix combosquat templates
     * Tld - Different TLD variations
     * FauxTld - Fake TLD patterns (optional)
     * Mapped - Character to look-alike mappings (l->1, o->0)
+    * Hosted - Brand subdomains on free-hosting / PaaS suffixes (optional)
 
   """
 
@@ -41,11 +44,12 @@ defmodule DomainTwistex.Permutate do
 
   @vowels_lower ~c"aeiou"
   @vowel_shuffle_ceiling 4
+  @cyrillic_whole_script_ceiling 32
   @ascii_lower ~c"abcdefghijklmnopqrstuvwxyz"
 
   @kinds ~w(Addition Bitsquatting Homoglyph Hyphenation HyphenationTldBoundary Insertion
             Omission Repetition Replacement Subdomain Transposition VowelSwap VowelShuffle
-            DoubleVowelInsertion Keyword Tld FauxTld Mapped)
+            DoubleVowelInsertion Keyword Compound Tld FauxTld Mapped Hosted)
 
   @homoglyphs %{
     ?a => ~c"àáâãäåɑạǎăȧą",
@@ -58,7 +62,7 @@ defmodule DomainTwistex.Permutate do
     ?h => ~c"ĥȟħɦḧḩⱨḣḥḫẖ",
     ?i => ~c"1líìïıɩǐĭỉịɨȋī",
     ?j => ~c"ʝɉ",
-    ?k => ~c"ḳḵⱪķ",
+    ?k => ~c"ḳḵⱪķƙ",
     ?l => ~c"1iɫł",
     ?m => ~c"nṁṃᴍɱḿ",
     ?n => ~c"mrńṅṇṉñņǹňꞑ",
@@ -67,12 +71,37 @@ defmodule DomainTwistex.Permutate do
     ?q => ~c"gʠ",
     ?r => ~c"ʀɼɽŕŗřɍɾȓȑṙṛṟ",
     ?s => ~c"ʂśṣṡșŝš",
-    ?t => ~c"ţŧṫṭțƫ",
+    ?t => ~c"ţŧṫṭțƫƭ",
     ?u => ~c"ᴜǔŭüʉùúûũūųưůűȕȗụ",
     ?v => ~c"ṿⱱᶌṽⱴ",
     ?w => ~c"ŵẁẃẅⱳẇẉẘ",
     ?y => ~c"ʏýÿŷƴȳɏỿẏỵ",
     ?z => ~c"ʐżźᴢƶẓẕⱬ"
+  }
+
+  # Strictly Cyrillic code points (U+0400..U+052F), including U+04CF (palochka)
+  # and U+04E9 (barred o) for whole-script and single-character IDN confusables.
+  @cyrillic_homoglyphs %{
+    ?a => ~c"а",
+    ?b => ~c"в",
+    ?c => ~c"с",
+    ?d => ~c"ԁ",
+    ?e => ~c"еєө",
+    ?h => ~c"һн",
+    ?i => ~c"іӏ",
+    ?j => ~c"ј",
+    ?k => ~c"кќ",
+    ?l => ~c"ӏ",
+    ?m => ~c"м",
+    ?o => ~c"оө",
+    ?p => ~c"р",
+    ?q => ~c"ԛ",
+    ?s => ~c"ѕ",
+    ?t => ~c"т",
+    ?v => ~c"ѵ",
+    ?w => ~c"ԝ",
+    ?x => ~c"х",
+    ?y => ~c"уү"
   }
 
   @mapped %{
@@ -147,15 +176,27 @@ defmodule DomainTwistex.Permutate do
     ?m => ~c"njk"
   }
 
+  # High-value keywords for identity, IT/helpdesk, recruiting, legal, and billing lures
+  @priority_keywords ~w(
+    login signin auth sso okta passkey mfa 2fa password verify
+    account access internal portal support help helpdesk servicedesk ticket tickets
+    security alert update confirm mail webmail office365 m365 azure salesforce
+    zendesk workday billing payment invoice claims report legal legaldept
+    hr hire hires hiring career careers job jobs recruiting interview onboarding
+    customer admin service notification
+  )
+
   # Load TLDs and keywords at compile time
   @external_resource tlds_path = Path.join(:code.priv_dir(:domaintwistex), "tlds.txt")
   @external_resource keywords_path = Path.join(:code.priv_dir(:domaintwistex), "keywords.txt")
 
   @tlds tlds_path |> File.read!() |> String.split("\n", trim: true)
-  @keywords keywords_path |> File.read!() |> String.split("\n", trim: true)
+  @raw_keywords keywords_path |> File.read!() |> String.split("\n", trim: true)
+  @keywords (@raw_keywords ++ @priority_keywords) |> Enum.uniq() |> Enum.sort()
 
   # Curated default TLD set: high-traffic gTLDs/ccTLDs plus TLDs commonly
-  # abused for phishing. Use `tlds: :all` for the full public suffix list.
+  # abused for phishing, recruiting, claims, and legal pretexts.
+  # Use `tlds: :all` for the full public suffix list.
   @common_tlds ~w(
     com net org info biz co io ai app dev xyz online site top shop store tech cloud
     live me us uk co.uk org.uk ca de fr es it nl be ch at se no dk fi pl pt ie eu
@@ -165,14 +206,19 @@ defmodule DomainTwistex.Permutate do
     email support help services solutions group digital agency company global world
     one inc llc ltd media news blog page bank finance money pay security cyou buzz
     rest cfd sbs bond monster zip mov lol life today host press best run
+    career careers jobs claims report legal law attorney
   )
   @common_tlds Enum.filter(@common_tlds, &(&1 in @tlds))
 
-  # High-value keywords for phishing (prioritized)
-  @priority_keywords ~w(
-    login signin secure account verify update confirm support help
-    service alert notification mail webmail portal auth password
-    billing payment invoice customer admin
+  @compound_my_suffixes ~w(
+    sso internal access acess portal okta login auth mfa passkey
+    helpdesk support account hr careers work benefits legal
+  )
+
+  @hosted_default_suffixes ["pages.dev"]
+  @hosted_keywords ~w(
+    sso login auth okta passkey mfa portal support helpdesk verify
+    careers hires hiring interview legal claims
   )
 
   @type permutation :: %{
@@ -195,6 +241,18 @@ defmodule DomainTwistex.Permutate do
   def common_tlds, do: @common_tlds
 
   @doc """
+  Returns the full built-in keyword list used by default `Keyword` runs.
+  """
+  @spec keywords() :: [String.t()]
+  def keywords, do: @keywords
+
+  @doc """
+  Returns the prioritized high-signal phishing, SSO, recruiting, and legal keyword list.
+  """
+  @spec priority_keywords() :: [String.t()]
+  def priority_keywords, do: @priority_keywords
+
+  @doc """
   Generates all domain permutations for a given domain.
 
   Returns a list of maps with `:fqdn`, `:tld`, and `:kind` keys (plus
@@ -202,14 +260,28 @@ defmodule DomainTwistex.Permutate do
 
   ## Options
 
-    * `:tlds` - TLDs for the `Tld` permutation: `:common` (default, ~150
+    * `:tlds` - TLDs for the `Tld` permutation: `:common` (default, ~160
       curated TLDs), `:all` (full public suffix list, ~7K), or a list of strings
     * `:faux_tld` - Include FauxTld permutations (default: false)
     * `:double_vowel` - Include DoubleVowelInsertion (default: true)
     * `:vowel_shuffle` - Include VowelShuffle (default: false, up to 625 entries)
-    * `:priority_keywords_only` - Only use high-value phishing keywords (default: false)
+    * `:keywords` - `:default` (full built-in list), `:priority` (high-value subset),
+      or a custom list of keyword strings
+    * `:priority_keywords_only` - Alias for `keywords: :priority` (default: false)
+    * `:extra_keywords` - Additional keyword strings appended to `:keywords` (default: `[]`)
+    * `:aliases` - Short brand tokens or tickers (e.g. `["vrtx"]`) run through
+      `Keyword`, `Compound`, and `Hosted` only (default: `[]`)
+    * `:keyword_tlds` - Extra TLDs for `Keyword` permutations: `:default` (runs
+      priority keywords against `.com` when the target is non-`.com`), `[]`
+      (target TLD only), or a list of TLD strings
+    * `:keyword_tlds_scope` - `:active` (default, uses active `:keywords` list)
+      or `:priority` (uses priority + `:extra_keywords` on explicit `:keyword_tlds`)
+    * `:compound` - Include two-sided `Compound` templates (default: true)
+    * `:cyrillic` - Include Cyrillic single-char and whole-script homoglyphs (default: true)
+    * `:hosted` - Include `Hosted` PaaS subdomain candidates (default: false)
+    * `:hosted_suffixes` - PaaS suffixes for `Hosted` (default: `["pages.dev"]`)
     * `:kinds` - Only generate these kinds, as strings (`"Homoglyph"`) or
-      atoms (`:homoglyph`). Overrides the boolean toggles above.
+      atoms (`:homoglyph`). Overrides the boolean kind toggles above.
 
   ## Examples
 
@@ -220,6 +292,7 @@ defmodule DomainTwistex.Permutate do
   """
   @spec generate_permutations(String.t(), keyword()) :: [permutation()]
   def generate_permutations(fqdn, opts \\ []) do
+    validate_perm_opts!(opts)
     original = fqdn |> Domain.normalize() |> Domain.registrable()
     {domain, tld} = Domain.split(original)
     original_ascii = IDNA.to_ascii(original)
@@ -234,8 +307,44 @@ defmodule DomainTwistex.Permutate do
   end
 
   # =============================================================================
-  # Kind selection
+  # Option & Kind selection
   # =============================================================================
+
+  defp validate_perm_opts!(opts) do
+    case Keyword.get(opts, :keywords, :default) do
+      k when k in [nil, :default, :all, :priority] -> :ok
+      list when is_list(list) -> :ok
+      bad -> raise ArgumentError, "invalid :keywords option: #{inspect(bad)}"
+    end
+
+    case Keyword.get(opts, :extra_keywords, []) do
+      list when is_list(list) -> :ok
+      bad -> raise ArgumentError, "invalid :extra_keywords option: #{inspect(bad)}"
+    end
+
+    case Keyword.get(opts, :aliases, []) do
+      list when is_list(list) -> :ok
+      bad -> raise ArgumentError, "invalid :aliases option: #{inspect(bad)}"
+    end
+
+    case Keyword.get(opts, :keyword_tlds, :default) do
+      v when v in [:default, nil, false] -> :ok
+      list when is_list(list) -> :ok
+      bad -> raise ArgumentError, "invalid :keyword_tlds option: #{inspect(bad)}"
+    end
+
+    case Keyword.get(opts, :keyword_tlds_scope, :active) do
+      s when s in [:active, :priority] -> :ok
+      bad -> raise ArgumentError, "invalid :keyword_tlds_scope option: #{inspect(bad)}"
+    end
+
+    case Keyword.get(opts, :hosted_suffixes, @hosted_default_suffixes) do
+      list when is_list(list) -> :ok
+      bad -> raise ArgumentError, "invalid :hosted_suffixes option: #{inspect(bad)}"
+    end
+
+    :ok
+  end
 
   defp enabled_kinds(opts) do
     case Keyword.get(opts, :kinds) do
@@ -244,6 +353,8 @@ defmodule DomainTwistex.Permutate do
           "FauxTld" -> Keyword.get(opts, :faux_tld, false)
           "VowelShuffle" -> Keyword.get(opts, :vowel_shuffle, false)
           "DoubleVowelInsertion" -> Keyword.get(opts, :double_vowel, true)
+          "Compound" -> Keyword.get(opts, :compound, true)
+          "Hosted" -> Keyword.get(opts, :hosted, false)
           _ -> true
         end)
 
@@ -258,7 +369,7 @@ defmodule DomainTwistex.Permutate do
 
   defp generator("Addition", d, t, _), do: addition(d, t)
   defp generator("Bitsquatting", d, t, _), do: bitsquatting(d, t)
-  defp generator("Homoglyph", d, t, _), do: homoglyph(d, t)
+  defp generator("Homoglyph", d, t, opts), do: homoglyph(d, t, opts)
   defp generator("Hyphenation", d, t, _), do: hyphenation(d, t)
   defp generator("HyphenationTldBoundary", d, t, _), do: hyphenation_tld_boundary(d, t)
   defp generator("Insertion", d, t, _), do: insertion(d, t)
@@ -273,16 +384,103 @@ defmodule DomainTwistex.Permutate do
   defp generator("Mapped", d, t, _), do: mapped(d, t)
   defp generator("FauxTld", d, t, opts), do: faux_tld(d, t, tld_list(opts))
   defp generator("Tld", d, _t, opts), do: tld_swap(d, tld_list(opts))
-
-  defp generator("Keyword", d, t, opts),
-    do: keyword(d, t, Keyword.get(opts, :priority_keywords_only, false))
+  defp generator("Keyword", d, t, opts), do: keyword(d, t, opts)
+  defp generator("Compound", d, t, opts), do: compound(d, t, opts)
+  defp generator("Hosted", d, _t, opts), do: hosted(d, opts)
 
   defp tld_list(opts) do
     case Keyword.get(opts, :tlds, :common) do
       :common -> @common_tlds
       :all -> @tlds
-      list when is_list(list) -> list
+      list when is_list(list) -> normalize_tlds(list)
     end
+  end
+
+  defp active_keywords(opts) do
+    base =
+      case Keyword.get(opts, :keywords) do
+        k when k in [nil, :default, :all] ->
+          if Keyword.get(opts, :priority_keywords_only, false),
+            do: @priority_keywords,
+            else: @keywords
+
+        :priority ->
+          @priority_keywords
+
+        list when is_list(list) ->
+          normalize_tokens(list)
+      end
+
+    extra = opts |> Keyword.get(:extra_keywords, []) |> normalize_tokens()
+    Enum.uniq(base ++ extra)
+  end
+
+  defp priority_with_extra_keywords(opts) do
+    extra = opts |> Keyword.get(:extra_keywords, []) |> normalize_tokens()
+    Enum.uniq(@priority_keywords ++ extra)
+  end
+
+  defp alias_tokens(domain, opts) do
+    opts
+    |> Keyword.get(:aliases, [])
+    |> Enum.map(fn raw ->
+      norm = Domain.normalize(to_string(raw))
+      if String.contains?(norm, "."), do: elem(Domain.split(norm), 0), else: norm
+    end)
+    |> Enum.reject(&(&1 == "" or &1 == domain))
+    |> Enum.uniq()
+  end
+
+  defp extra_keyword_tlds(tld, opts) do
+    case Keyword.get(opts, :keyword_tlds, :default) do
+      :default ->
+        if tld != "com" do
+          kws =
+            case Keyword.get(opts, :keywords) do
+              list when is_list(list) -> active_keywords(opts)
+              _ -> priority_with_extra_keywords(opts)
+            end
+
+          [{"com", kws}]
+        else
+          []
+        end
+
+      v when v in [nil, false, []] ->
+        []
+
+      list when is_list(list) ->
+        kws =
+          case Keyword.get(opts, :keyword_tlds_scope, :active) do
+            :priority -> priority_with_extra_keywords(opts)
+            :active -> active_keywords(opts)
+          end
+
+        list
+        |> normalize_tlds()
+        |> Enum.reject(&(&1 == tld))
+        |> Enum.map(&{&1, kws})
+    end
+  end
+
+  defp normalize_tokens(list) do
+    list
+    |> Enum.map(&(&1 |> to_string() |> String.trim() |> String.downcase()))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp normalize_tlds(list) do
+    list
+    |> Enum.map(
+      &(&1
+        |> to_string()
+        |> String.trim()
+        |> String.trim_leading(".")
+        |> String.downcase())
+    )
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
   end
 
   # =============================================================================
@@ -485,18 +683,104 @@ defmodule DomainTwistex.Permutate do
     end
   end
 
-  # Keyword: Common phishing keywords
-  defp keyword(domain, tld, priority_only) do
-    keywords = if priority_only, do: @priority_keywords, else: @keywords
+  # Keyword: Common phishing, recruiting, SSO, IT, and legal keywords
+  defp keyword(domain, tld, opts) do
+    targets = [domain | alias_tokens(domain, opts)]
+    tlds_and_keywords = [{tld, active_keywords(opts)} | extra_keyword_tlds(tld, opts)]
 
-    Stream.flat_map(keywords, fn kw ->
-      [
-        perm("#{domain}-#{kw}", tld, "Keyword"),
-        perm("#{domain}#{kw}", tld, "Keyword"),
-        perm("#{kw}-#{domain}", tld, "Keyword"),
-        perm("#{kw}#{domain}", tld, "Keyword")
-      ]
+    Stream.flat_map(tlds_and_keywords, fn {target_tld, kws} ->
+      Stream.flat_map(targets, fn b ->
+        Stream.flat_map(kws, fn kw ->
+          [
+            perm("#{b}-#{kw}", target_tld, "Keyword"),
+            perm("#{b}#{kw}", target_tld, "Keyword"),
+            perm("#{kw}-#{b}", target_tld, "Keyword"),
+            perm("#{kw}#{b}", target_tld, "Keyword")
+          ]
+        end)
+      end)
     end)
+  end
+
+  # Compound: Two-sided and multi-affix combosquat wrappers
+  defp compound(domain, tld, opts) do
+    targets = [domain | alias_tokens(domain, opts)]
+
+    tlds =
+      if tld != "com" and Keyword.get(opts, :keyword_tlds, :default) not in [[], false, nil],
+        do: [tld, "com"],
+        else: [tld]
+
+    for target_tld <- tlds,
+        b <- targets,
+        entry <- compound_for_brand(b, target_tld) do
+      entry
+    end
+  end
+
+  defp compound_for_brand(b, tld) do
+    my_forms =
+      Enum.flat_map(@compound_my_suffixes, fn kw ->
+        [
+          perm("my#{b}#{kw}", tld, "Compound"),
+          perm("my-#{b}-#{kw}", tld, "Compound"),
+          perm("my-#{b}#{kw}", tld, "Compound")
+        ]
+      end)
+
+    templates =
+      Enum.map(
+        [
+          "on#{b}zendesk",
+          "on-#{b}-zendesk",
+          "#{b}-my-salesforce",
+          "#{b}mysalesforce",
+          "oktalogin-#{b}",
+          "#{b}-oktalogin",
+          "#{b}-sso-login",
+          "sso-login-#{b}",
+          "workat#{b}",
+          "work-at-#{b}",
+          "careersat#{b}",
+          "careers-at-#{b}",
+          "lifeat#{b}careers",
+          "join#{b}team",
+          "#{b}careershub",
+          "#{b}-careers-hub",
+          "#{b}talentportal",
+          "#{b}-hr-portal",
+          "legal-dept-#{b}",
+          "#{b}-legal-dept"
+        ],
+        &perm(&1, tld, "Compound")
+      )
+
+    my_forms ++ templates
+  end
+
+  # Hosted: Brand subdomains on free-hosting / PaaS suffixes
+  defp hosted(domain, opts) do
+    targets = [domain | alias_tokens(domain, opts)]
+
+    suffixes =
+      opts
+      |> Keyword.get(:hosted_suffixes, @hosted_default_suffixes)
+      |> normalize_tlds()
+
+    for suffix <- suffixes,
+        b <- targets,
+        label <- hosted_labels(b) do
+      perm(label, suffix, "Hosted")
+    end
+  end
+
+  defp hosted_labels(b) do
+    affixed =
+      Enum.flat_map(@hosted_keywords, fn kw ->
+        ["#{b}-#{kw}", "#{kw}-#{b}"]
+      end)
+
+    [b, "connect-pages-#{b}", "connect-#{b}" | affixed]
   end
 
   # TLD Swap: Different TLDs
@@ -523,13 +807,50 @@ defmodule DomainTwistex.Permutate do
     end
   end
 
-  # Homoglyph: Visually similar characters
-  defp homoglyph(domain, tld) do
+  # Homoglyph: Visually similar Latin and Cyrillic characters
+  defp homoglyph(domain, tld, opts) do
     chars = String.to_charlist(domain)
 
-    for {c, i} <- Enum.with_index(chars),
-        g <- Map.get(@homoglyphs, c, []) do
-      chars |> List.replace_at(i, g) |> perm(tld, "Homoglyph")
+    latin =
+      for {c, i} <- Enum.with_index(chars),
+          g <- Map.get(@homoglyphs, c, []) do
+        chars |> List.replace_at(i, g) |> perm(tld, "Homoglyph")
+      end
+
+    if Keyword.get(opts, :cyrillic, true) do
+      cyrillic_single =
+        for {c, i} <- Enum.with_index(chars),
+            g <- Map.get(@cyrillic_homoglyphs, c, []) do
+          chars |> List.replace_at(i, g) |> perm(tld, "Homoglyph")
+        end
+
+      latin ++ cyrillic_single ++ whole_script_cyrillic(chars, tld)
+    else
+      latin
+    end
+  end
+
+  defp whole_script_cyrillic(chars, tld) do
+    has_alpha? = Enum.any?(chars, &(&1 in ?a..?z))
+
+    all_mappable? =
+      Enum.all?(chars, fn
+        c when c in ?a..?z -> Map.has_key?(@cyrillic_homoglyphs, c)
+        c when c in ?0..?9 or c == ?- -> true
+        _ -> false
+      end)
+
+    if has_alpha? and all_mappable? do
+      chars
+      |> Enum.reduce([[]], fn c, acc ->
+        choices = Map.get(@cyrillic_homoglyphs, c, [c])
+
+        for(prefix <- acc, g <- choices, do: [g | prefix])
+        |> Enum.take(@cyrillic_whole_script_ceiling)
+      end)
+      |> Enum.map(&(&1 |> Enum.reverse() |> perm(tld, "Homoglyph")))
+    else
+      []
     end
   end
 end
