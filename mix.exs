@@ -1,7 +1,7 @@
 defmodule DomainTwistex.MixProject do
   use Mix.Project
 
-  @version "1.0.0"
+  @version "1.1.0"
   @source_url "https://github.com/osintowl/domaintwistex"
 
   def project do
@@ -36,7 +36,7 @@ defmodule DomainTwistex.MixProject do
   defp description do
     """
     Pure Elixir domain permutation and typosquatting detection engine.
-    Generates 18 permutation types, resolves concurrently with DNS/WHOIS
+    Generates 20 permutation types, resolves concurrently with DNS/WHOIS
     enrichment, SPF analysis, and fuzzy matching for suspicious domain detection.
     """
   end
@@ -66,7 +66,7 @@ defmodule DomainTwistex.MixProject do
       source_ref: "v#{@version}",
       extras: ["README.md", "CHANGELOG.md"],
       groups_for_modules: [
-        "Core": [
+        Core: [
           DomainTwistex,
           DomainTwistex.Twist,
           DomainTwistex.Permutate,

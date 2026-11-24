@@ -17,6 +17,15 @@ defmodule Mix.Tasks.Twist do
       --no-whois              Skip WHOIS/RDAP lookups (faster; on by default)
       --mx-only               Only show domains with MX records
       --priority-keywords     Use only high-priority phishing keywords (faster)
+      --extra-keywords LIST   Comma-separated extra keywords to append
+      --keywords-file FILE    Newline-separated custom keyword list file
+      --aliases LIST          Comma-separated brand tickers/short names (e.g. vrtx,kmx)
+      --keyword-tlds LIST     Extra TLDs for keyword permutations (e.g. com,support,claims,legal)
+      --keyword-tlds-priority Use priority keywords only on --keyword-tlds
+      --no-compound           Skip two-sided Compound permutations (on by default)
+      --no-cyrillic           Skip Cyrillic homoglyphs (on by default)
+      --hosted                Include Hosted PaaS subdomain candidates (off by default)
+      --hosted-suffixes LIST  Comma-separated PaaS suffixes (default: pages.dev)
       --all-tlds              Use the full public suffix list for TLD swaps (~7K)
       --faux-tld              Include FauxTld permutations
       --vowel-shuffle         Include VowelShuffle permutations
@@ -59,6 +68,15 @@ defmodule Mix.Tasks.Twist do
           output: :string,
           mx_only: :boolean,
           priority_keywords: :boolean,
+          extra_keywords: :string,
+          keywords_file: :string,
+          aliases: :string,
+          keyword_tlds: :string,
+          keyword_tlds_priority: :boolean,
+          compound: :boolean,
+          cyrillic: :boolean,
+          hosted: :boolean,
+          hosted_suffixes: :string,
           all_tlds: :boolean,
           faux_tld: :boolean,
           vowel_shuffle: :boolean,
@@ -107,7 +125,18 @@ defmodule Mix.Tasks.Twist do
         timeout: Keyword.get(opts, :timeout, defaults[:timeout]),
         dns_timeout: Keyword.get(opts, :dns_timeout, defaults[:dns_timeout]),
         whois: Keyword.get(opts, :whois, defaults[:whois]),
+        keywords: parse_keywords_opt(opts),
         priority_keywords_only: Keyword.get(opts, :priority_keywords, false),
+        extra_keywords: parse_csv_opt(Keyword.get(opts, :extra_keywords)) || [],
+        aliases: parse_csv_opt(Keyword.get(opts, :aliases)) || [],
+        keyword_tlds: parse_csv_opt(Keyword.get(opts, :keyword_tlds)) || :default,
+        keyword_tlds_scope:
+          if(Keyword.get(opts, :keyword_tlds_priority, false), do: :priority, else: :active),
+        compound: Keyword.get(opts, :compound, defaults[:compound]),
+        cyrillic: Keyword.get(opts, :cyrillic, defaults[:cyrillic]),
+        hosted: Keyword.get(opts, :hosted, defaults[:hosted]),
+        hosted_suffixes:
+          parse_csv_opt(Keyword.get(opts, :hosted_suffixes)) || defaults[:hosted_suffixes],
         tlds: if(Keyword.get(opts, :all_tlds, false), do: :all, else: :common),
         faux_tld: Keyword.get(opts, :faux_tld, false),
         vowel_shuffle: Keyword.get(opts, :vowel_shuffle, false),
@@ -172,6 +201,34 @@ defmodule Mix.Tasks.Twist do
     end
   end
 
+  defp parse_csv_opt(nil), do: nil
+
+  defp parse_csv_opt(str) do
+    str
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp parse_keywords_opt(opts) do
+    case Keyword.get(opts, :keywords_file) do
+      nil ->
+        if Keyword.get(opts, :priority_keywords, false), do: :priority, else: :default
+
+      path ->
+        case File.read(path) do
+          {:ok, content} ->
+            content
+            |> String.split(~r/\r?\n/, trim: true)
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+
+          {:error, reason} ->
+            Mix.raise("Failed to read keywords file #{path}: #{:file.format_error(reason)}")
+        end
+    end
+  end
+
   defp parse_kinds(nil), do: nil
 
   defp parse_kinds(kinds) do
@@ -230,7 +287,8 @@ defmodule Mix.Tasks.Twist do
 
   @csv_headers ~w(kind fqdn unicode ip_addresses public_ips internal_ips ip_flags
                   mx_records nameservers http_status https_status title tls_issuer
-                  tls_age_days registrar creation_date)
+                  tls_age_days registrar creation_date whois_age_days
+                  shares_nameservers shares_ips shares_mx redirects_to_original web_only)
 
   defp output_csv(results, output_file) do
     rows =
@@ -240,6 +298,7 @@ defmodule Mix.Tasks.Twist do
         https = Map.get(server, :https) || %{}
         tls = Map.get(server, :tls) || %{}
         whois = r.whois || %{}
+        signals = r[:signals] || %{}
 
         [
           r.kind,
@@ -257,7 +316,13 @@ defmodule Mix.Tasks.Twist do
           tls[:issuer],
           tls[:age_days],
           whois[:registrar],
-          whois[:creation_date]
+          whois[:creation_date],
+          whois[:age_days],
+          signals[:shares_nameservers],
+          signals[:shares_ips],
+          signals[:shares_mx],
+          signals[:redirects_to_original],
+          signals[:web_only]
         ]
         |> Enum.map_join(",", &csv_field/1)
       end)

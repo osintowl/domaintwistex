@@ -144,7 +144,92 @@ defmodule DomainTwistex.CoreTest do
       result = Utils.minimal_result(perm, probe, %{domain: "example.com"})
 
       assert result.spf_records == nil
+      assert is_map(result.signals)
+      assert result.signals.web_only == true
       assert {:ok, _} = Jason.encode(result)
+    end
+
+    test "compute_signals compares infrastructure, redirects, and web_only posture" do
+      context = %{
+        domain: "example.com",
+        original: %{
+          nameservers: ["ns1.cloudflare.com", "ns2.cloudflare.com"],
+          public_ips: ["93.184.216.34"],
+          mx_records: [%{priority: 10, server: "aspmx.l.google.com"}]
+        }
+      }
+
+      web_lure = %{
+        public_ips: ["203.0.114.9"],
+        nameservers: ["ns1.cloudflare.com"],
+        mx_records: [],
+        spf_records: nil,
+        dmarc: %{error: "No valid DMARC record found"},
+        server_response: %{
+          http: %{location: "/login"},
+          https: %{location: "https://careers.example.com/jobs"}
+        }
+      }
+
+      signals = Utils.compute_signals(web_lure, context)
+      assert signals.shares_nameservers == true
+      assert signals.shares_ips == false
+      assert signals.shares_mx == false
+      assert signals.redirects_to_original == true
+      assert signals.has_mx == false
+      assert signals.web_only == true
+
+      mx_hit = %{
+        public_ips: ["203.0.114.9"],
+        nameservers: ["ns1.evil.test"],
+        mx_records: [%{priority: 10, server: "ASPMX.L.GOOGLE.COM"}],
+        spf_records: nil,
+        dmarc: %{},
+        server_response: %{
+          http: %{location: "/login"},
+          https: %{location: "https://attacker.example.net/auth"}
+        }
+      }
+
+      mx_signals = Utils.compute_signals(mx_hit, context)
+      assert mx_signals.shares_nameservers == false
+      assert mx_signals.shares_mx == true
+      assert mx_signals.redirects_to_original == false
+      assert mx_signals.has_mx == true
+      assert mx_signals.web_only == false
+    end
+  end
+
+  describe "Whois.parse_age_days/1" do
+    alias DomainTwistex.Whois
+
+    test "parses ISO-8601, YYYY-MM-DD, and DD-Mon-YYYY creation dates" do
+      five_days_ago = Date.utc_today() |> Date.add(-5) |> Date.to_iso8601()
+      assert Whois.parse_age_days(five_days_ago <> "T12:00:00Z") in 4..6
+      assert Whois.parse_age_days(five_days_ago) == 5
+      assert is_integer(Whois.parse_age_days("20-Nov-2025"))
+      assert Whois.parse_age_days(nil) == nil
+      assert Whois.parse_age_days("not a date") == nil
+    end
+  end
+
+  describe "wildcard retention" do
+    alias DomainTwistex.Twist
+
+    test "retains MX-active domains even when wildcard is true and public_ips is empty" do
+      assert Twist.drop_wildcard_hit?(%{wildcard: true, public_ips: [], mx_records: []})
+
+      refute Twist.drop_wildcard_hit?(%{
+               wildcard: true,
+               public_ips: [],
+               mx_records: [%{priority: 10, server: "mx.brandhires.com"}]
+             })
+
+      refute Twist.drop_wildcard_hit?(%{
+               wildcard: true,
+               public_ips: ["93.184.216.34"],
+               mx_records: []
+             })
     end
   end
 

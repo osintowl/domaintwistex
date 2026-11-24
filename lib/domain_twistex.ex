@@ -2,10 +2,11 @@ defmodule DomainTwistex do
   @moduledoc """
   Domain permutation and typosquatting detection library.
 
-  DomainTwistex generates domain permutations using 18 different algorithms,
+  DomainTwistex generates domain permutations using 20 different algorithms,
   checks which ones are registered with a fast two-stage DNS pipeline, and
-  enriches hits with MX/SPF/DMARC, HTTP/TLS, WHOIS/RDAP data, and fuzzy
-  similarity. Results are raw data, left for an analyst (or model) to judge.
+  enriches hits with MX/SPF/DMARC, HTTP/TLS, WHOIS/RDAP data, baseline
+  comparison signals, and fuzzy similarity. Results are raw data, left for an
+  analyst (or model) to judge.
 
   ## Quick Start
 
@@ -35,13 +36,22 @@ defmodule DomainTwistex do
     * `:whois` - WHOIS/RDAP lookups for registered hits (default: true; `false` is faster)
     * `:ordered` - Return results in permutation order (default: grouped by kind)
     * `:tlds` - `:common` (default), `:all`, or a list of TLDs for `Tld` permutations
+    * `:keywords` - `:default`, `:priority`, or a custom list of keyword strings
+    * `:extra_keywords` - Additional keywords appended to `:keywords`
+    * `:aliases` - Brand tickers or short names run through `Keyword` and `Compound`
+    * `:keyword_tlds` - `:default`, `[]`, or a list of extra TLDs for `Keyword` permutations
+    * `:keyword_tlds_scope` - `:active` (default) or `:priority` for explicit `:keyword_tlds`
+    * `:compound` - Include two-sided `Compound` wrappers (default: true)
+    * `:cyrillic` - Include Cyrillic homoglyphs (default: true)
+    * `:hosted` - Include `Hosted` PaaS subdomain candidates (default: false)
+    * `:hosted_suffixes` - PaaS suffixes for `Hosted` (default: `["pages.dev"]`)
     * `:kinds` - Only generate these permutation kinds, e.g. `[:homoglyph, :bitsquatting]`
 
   See `DomainTwistex.Twist.analyze_domain/2` for the full list.
 
   ## Permutation Types
 
-  The library generates 18 types of domain permutations:
+  The library generates 20 types of domain permutations:
 
     * Addition - Appending characters (examplea.com)
     * Bitsquatting - Single bit flips (axample.com)

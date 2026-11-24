@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.0
+
+### New
+
+- Added `Compound` permutation kind (on by default via `:compound`) for two-sided `my{brand}{kw}` wrappers and SaaS/recruiting combosquat templates (`on{brand}zendesk`, `{brand}-my-salesforce`, `oktalogin-{brand}`, `lifeat{brand}careers`, etc.).
+- Added opt-in `Hosted` permutation kind (`hosted: true`, `:hosted_suffixes`, defaulting to `["pages.dev"]`) for free-hosting / PaaS brand redirector candidates (`connect-pages-{brand}.pages.dev`, `{brand}.pages.dev`, `{brand}-{kw}.pages.dev`).
+- Added Cyrillic single-character and capped whole-script IDN homoglyphs (including `U+04CF` palochka and `U+04E9` barred o, controlled by `cyrillic: true`) plus Latin hook look-alikes (`U+0199` and `U+01AD`).
+- Added runtime customization options `:keywords`, `:extra_keywords`, `:aliases` (runs short tickers/abbreviations through `Keyword`, `Compound`, and `Hosted` without short-label typo noise), `:keyword_tlds`, and `:keyword_tlds_scope`, plus introspection helpers `Permutate.keywords/0` and `Permutate.priority_keywords/0`.
+- Non-`.com` target domains now automatically check `@priority_keywords` against `.com` as well when `:keyword_tlds` is `:default`.
+- Added `age_days` to RDAP and WHOIS lookup results (`Whois.parse_age_days/1`).
+- Added `:signals` map (`shares_nameservers`, `shares_ips`, `shares_mx`, `redirects_to_original`, `has_mx`, `web_only`) to enriched permutation results and `mix twist` CSV output.
+- Added matching CLI flags to `mix twist`: `--extra-keywords`, `--keywords-file`, `--aliases`, `--keyword-tlds`, `--keyword-tlds-priority`, `--no-compound`, `--no-cyrillic`, `--hosted`, and `--hosted-suffixes`.
+
+### Accuracy
+
+- Repaired `si`--`z` truncation in `priv/keywords.txt` and expanded the built-in corpus to 868 sorted keywords covering recruiting/HR lures (`hire`, `hires`, `hiring`, `careers`, `jobs`, `interviews`, `webinar`, `paidexpert`, `lifeat`, etc.), ShinyHunters/Com SSO & IT lures (`sso`, `okta`, `internal`, `ticket`, `passkey`, `salesforce`, `zendesk`, `report`, etc.), and legal pretexts (`legal`, `legaldept`, `dept`, `counsel`, `litigation`, `settlement`, `subpoena`).
+- Ensured `@keywords` is always a superset of `@priority_keywords` on default runs.
+- Added `career`, `careers`, `jobs`, `claims`, `report`, `legal`, `law`, and `attorney` to `@common_tlds`.
+- Retained MX-active hits in `Twist` even when `wildcard: true` and `public_ips: []`.
+
 ## v1.0.0
 
 First stable release! The library has been extensively refactored and is now production-ready.

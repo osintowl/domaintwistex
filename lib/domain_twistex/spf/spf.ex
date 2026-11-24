@@ -206,7 +206,8 @@ defmodule DomainTwistex.SPF do
     [
       {lookup_count > @max_lookups, "exceeds #{@max_lookups} DNS lookup limit (#{lookup_count})"},
       {all_mechanism == "+all", "+all permits any sender"},
-      {all_mechanism == nil and redirect == nil, "no all mechanism or redirect (defaults to neutral)"},
+      {all_mechanism == nil and redirect == nil,
+       "no all mechanism or redirect (defaults to neutral)"},
       {Enum.any?(mechanisms, &(&1.type == :ptr)), "uses deprecated ptr mechanism"},
       {Enum.any?(mechanisms, &(&1.type == :unknown)), "contains unrecognized terms"}
     ]

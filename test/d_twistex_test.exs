@@ -133,5 +133,204 @@ defmodule DomainTwistex.PermutateTest do
       assert "g0ogle.com" in fqdns
       assert "go0gle.com" in fqdns
     end
+
+    test "priv/keywords.txt is sorted, deduplicated, lowercase, and covers s-z and priority keywords" do
+      lines =
+        :code.priv_dir(:domaintwistex)
+        |> Path.join("keywords.txt")
+        |> File.read!()
+        |> String.split("\n", trim: true)
+
+      assert lines == Enum.uniq(lines)
+      assert lines == Enum.sort(lines)
+      assert Enum.all?(lines, &(&1 == String.downcase(&1)))
+      assert Enum.any?(lines, &String.starts_with?(&1, "t"))
+      assert Enum.any?(lines, &String.starts_with?(&1, "w"))
+      assert Enum.any?(lines, &String.starts_with?(&1, "z"))
+      assert MapSet.subset?(MapSet.new(Permutate.priority_keywords()), MapSet.new(lines))
+    end
+
+    test "default run generates recruiting, ShinyHunters SSO, and legal lures" do
+      fqdns =
+        "brand.com"
+        |> Permutate.generate_permutations()
+        |> MapSet.new(& &1.fqdn)
+
+      for expected <- [
+            "brandhires.com",
+            "brandhiring.com",
+            "brandcareers.com",
+            "brandjobs.com",
+            "brandrecruiting.com",
+            "lifeatbrand.com",
+            "brandinterviews.com",
+            "brand-webinar.com",
+            "brandsso.com",
+            "brand-okta.com",
+            "ticket-brand.com",
+            "brandpasskey.com",
+            "brandsupport.com",
+            "brandportal.com",
+            "brandauth.com",
+            "legal-brand.com",
+            "legaldept-brand.com",
+            "brand-legal.com",
+            "brand.legal",
+            "brand.careers",
+            "brand.claims",
+            "brand.report"
+          ] do
+        assert MapSet.member?(fqdns, expected), "expected #{expected} in default permutations"
+      end
+    end
+
+    test "supports custom :keywords and :extra_keywords options" do
+      custom =
+        "acme.com"
+        |> Permutate.generate_permutations(
+          kinds: [:keyword],
+          keywords: ["alpha"],
+          extra_keywords: ["Beta"]
+        )
+        |> Enum.map(& &1.fqdn)
+
+      assert "acme-alpha.com" in custom
+      assert "acmebeta.com" in custom
+      refute "acmesso.com" in custom
+
+      priority =
+        "acme.com"
+        |> Permutate.generate_permutations(kinds: [:keyword], keywords: :priority)
+
+      legacy_priority =
+        "acme.com"
+        |> Permutate.generate_permutations(kinds: [:keyword], priority_keywords_only: true)
+
+      assert priority == legacy_priority
+
+      assert length(priority) <
+               length(Permutate.generate_permutations("acme.com", kinds: [:keyword]))
+    end
+
+    test "aliases run through Keyword, Compound, and Hosted without typo noise" do
+      perms =
+        Permutate.generate_permutations("vertex.com", aliases: ["VRTX", "kmx.com"], hosted: true)
+
+      fqdns = MapSet.new(perms, & &1.fqdn)
+
+      assert MapSet.member?(fqdns, "legal-vrtx.com")
+      assert MapSet.member?(fqdns, "vrtxhires.com")
+      assert MapSet.member?(fqdns, "kmxclaims.com")
+      assert MapSet.member?(fqdns, "myvrtxsso.com")
+      assert MapSet.member?(fqdns, "connect-pages-vrtx.pages.dev")
+      # Short tickers must not be fed into typo/omission/addition fuzzers
+      refute MapSet.member?(fqdns, "vtx.com")
+      refute MapSet.member?(fqdns, "vrtxa.com")
+    end
+
+    test "keyword_tlds covers non-.com fallback and explicit cross-TLD scopes" do
+      non_com_default =
+        "acme.io"
+        |> Permutate.generate_permutations(kinds: [:keyword])
+        |> MapSet.new(& &1.fqdn)
+
+      assert MapSet.member?(non_com_default, "acmehires.io")
+      assert MapSet.member?(non_com_default, "acmehires.com")
+      assert MapSet.member?(non_com_default, "acmesso.com")
+
+      non_com_disabled =
+        "acme.io"
+        |> Permutate.generate_permutations(kinds: [:keyword], keyword_tlds: [])
+        |> MapSet.new(& &1.fqdn)
+
+      assert MapSet.member?(non_com_disabled, "acmehires.io")
+      refute MapSet.member?(non_com_disabled, "acmehires.com")
+
+      explicit_priority =
+        "acme.com"
+        |> Permutate.generate_permutations(
+          kinds: [:keyword],
+          keyword_tlds: ["support", ".claims", "legal"],
+          keyword_tlds_scope: :priority
+        )
+        |> MapSet.new(& &1.fqdn)
+
+      assert MapSet.member?(explicit_priority, "ticket-acme.support")
+      assert MapSet.member?(explicit_priority, "acme-claims.claims")
+      assert MapSet.member?(explicit_priority, "legal-acme.legal")
+    end
+
+    test "compound generates two-sided wrappers and respects compound: false" do
+      compounds =
+        "disney.com"
+        |> Permutate.generate_permutations(kinds: [:compound])
+        |> MapSet.new(& &1.fqdn)
+
+      assert MapSet.member?(compounds, "mydisneysso.com")
+      assert MapSet.member?(compounds, "my-disney-sso.com")
+      assert MapSet.member?(compounds, "mydisneyinternal.com")
+      assert MapSet.member?(compounds, "ondisneyzendesk.com")
+      assert MapSet.member?(compounds, "disney-my-salesforce.com")
+      assert MapSet.member?(compounds, "oktalogin-disney.com")
+      assert MapSet.member?(compounds, "lifeatdisneycareers.com")
+
+      without_compound = Permutate.generate_permutations("disney.com", compound: false)
+      refute Enum.any?(without_compound, &(&1.kind == "Compound"))
+    end
+
+    test "homoglyph includes Latin hooks and Cyrillic lookalikes, and respects cyrillic: false" do
+      okta = Permutate.generate_permutations("okta.com", kinds: [:homoglyph])
+      okta_unicode = MapSet.new(okta, &Map.get(&1, :unicode, &1.fqdn))
+      assert MapSet.member?(okta_unicode, "oƙta.com")
+
+      apple = Permutate.generate_permutations("apple.com", kinds: [:homoglyph])
+      apple_unicode = MapSet.new(apple, &Map.get(&1, :unicode, &1.fqdn))
+      assert MapSet.member?(apple_unicode, "аррӏө.com")
+
+      latin_only =
+        Permutate.generate_permutations("apple.com", kinds: [:homoglyph], cyrillic: false)
+
+      refute Enum.any?(latin_only, fn p ->
+               u = Map.get(p, :unicode, p.fqdn)
+               Enum.any?(String.to_charlist(u), &(&1 in 0x0400..0x052F))
+             end)
+
+      # Long Cyrillic-mappable labels remain bounded
+      long_label = String.duplicate("e", 30) <> ".com"
+      assert length(Permutate.generate_permutations(long_label, kinds: [:homoglyph])) < 1_000
+    end
+
+    test "hosted is opt-in and supports custom PaaS suffixes" do
+      default = Permutate.generate_permutations("acme.com")
+      refute Enum.any?(default, &(&1.kind == "Hosted"))
+
+      hosted =
+        Permutate.generate_permutations("acme.com",
+          hosted: true,
+          hosted_suffixes: ["pages.dev", ".workers.dev"]
+        )
+        |> Enum.filter(&(&1.kind == "Hosted"))
+
+      fqdns = MapSet.new(hosted, & &1.fqdn)
+      assert MapSet.member?(fqdns, "acme.pages.dev")
+      assert MapSet.member?(fqdns, "connect-pages-acme.pages.dev")
+      assert MapSet.member?(fqdns, "acme-hires.pages.dev")
+      assert MapSet.member?(fqdns, "connect-pages-acme.workers.dev")
+
+      assert Enum.any?(
+               hosted,
+               &(&1.fqdn == "connect-pages-acme.pages.dev" and &1.tld == "pages.dev")
+             )
+    end
+
+    test "rejects malformed permutation options" do
+      assert_raise ArgumentError, fn ->
+        Permutate.generate_permutations("test.com", keywords: :bogus)
+      end
+
+      assert_raise ArgumentError, fn ->
+        Permutate.generate_permutations("test.com", keyword_tlds_scope: :bogus)
+      end
+    end
   end
 end

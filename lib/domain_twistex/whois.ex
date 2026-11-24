@@ -88,8 +88,11 @@ defmodule DomainTwistex.Whois do
       end
 
     case result do
-      {:ok, data} -> {:ok, if(Keyword.get(opts, :raw, false), do: data, else: Map.delete(data, :raw_data))}
-      error -> error
+      {:ok, data} ->
+        {:ok, if(Keyword.get(opts, :raw, false), do: data, else: Map.delete(data, :raw_data))}
+
+      error ->
+        error
     end
   end
 
@@ -129,7 +132,8 @@ defmodule DomainTwistex.Whois do
     tld = extract_tld(domain)
 
     with {:ok, servers} <- rdap_servers(),
-         {:ok, base_url} <- Map.fetch(servers, tld) |> or_error("No RDAP server found for TLD: #{tld}") do
+         {:ok, base_url} <-
+           Map.fetch(servers, tld) |> or_error("No RDAP server found for TLD: #{tld}") do
       case Req.get(base_url <> "domain/" <> domain,
              receive_timeout: 5_000,
              retry: :transient,
@@ -166,12 +170,16 @@ defmodule DomainTwistex.Whois do
       :miss ->
         # Serialize the fetch so a cold cache doesn't trigger a stampede of
         # IANA requests (and a global GC per persistent_term.put)
-        :global.trans({@rdap_cache_key, self()}, fn ->
-          case cached_bootstrap() do
-            :miss -> fetch_and_cache_bootstrap()
-            cached -> cached
-          end
-        end, [node()])
+        :global.trans(
+          {@rdap_cache_key, self()},
+          fn ->
+            case cached_bootstrap() do
+              :miss -> fetch_and_cache_bootstrap()
+              cached -> cached
+            end
+          end,
+          [node()]
+        )
     end
   end
 
@@ -190,7 +198,11 @@ defmodule DomainTwistex.Whois do
 
   defp fetch_and_cache_bootstrap do
     result =
-      case Req.get(@iana_rdap_bootstrap_url, receive_timeout: 10_000, retry: :transient, max_retries: 2) do
+      case Req.get(@iana_rdap_bootstrap_url,
+             receive_timeout: 10_000,
+             retry: :transient,
+             max_retries: 2
+           ) do
         {:ok, %Req.Response{status: 200, body: %{"services" => services}}} ->
           {:ok, index_services(services)}
 
@@ -243,7 +255,12 @@ defmodule DomainTwistex.Whois do
   end
 
   defp tcp_whois_query(server, domain) do
-    case :gen_tcp.connect(String.to_charlist(server), 43, [:binary, packet: 0, active: false], 3_000) do
+    case :gen_tcp.connect(
+           String.to_charlist(server),
+           43,
+           [:binary, packet: 0, active: false],
+           3_000
+         ) do
       {:ok, socket} ->
         :gen_tcp.send(socket, "#{domain}\r\n")
         result = recv_all(socket, <<>>)
@@ -288,14 +305,24 @@ defmodule DomainTwistex.Whois do
   defp parse_whois_response(domain, raw_data) do
     registered = not Enum.any?(not_registered_patterns(), &Regex.match?(&1, raw_data))
 
+    creation_date =
+      parse_whois_field(raw_data, [
+        "Creation Date",
+        "Created On",
+        "Created",
+        "Registered on",
+        "Registration Time"
+      ])
+
     %{
       domain: domain,
       source: "whois",
       raw_data: raw_data,
       registered: registered,
-      registrar: parse_whois_field(raw_data, ["Registrar", "Sponsoring Registrar", "registrar name"]),
-      creation_date:
-        parse_whois_field(raw_data, ["Creation Date", "Created On", "Created", "Registered on", "Registration Time"]),
+      registrar:
+        parse_whois_field(raw_data, ["Registrar", "Sponsoring Registrar", "registrar name"]),
+      creation_date: creation_date,
+      age_days: parse_age_days(creation_date),
       expiration_date:
         parse_whois_field(raw_data, [
           "Registry Expiry Date",
@@ -306,7 +333,13 @@ defmodule DomainTwistex.Whois do
           "Expires",
           "paid-till"
         ]),
-      updated_date: parse_whois_field(raw_data, ["Updated Date", "Last Updated On", "Last Modified", "Changed"]),
+      updated_date:
+        parse_whois_field(raw_data, [
+          "Updated Date",
+          "Last Updated On",
+          "Last Modified",
+          "Changed"
+        ]),
       status: parse_whois_status(raw_data),
       nameservers: parse_whois_nameservers(raw_data),
       registrant: @whois_not_available,
@@ -382,6 +415,7 @@ defmodule DomainTwistex.Whois do
 
   defp parse_rdap_response(domain, rdap_data) do
     entities = Map.get(rdap_data, "entities", [])
+    creation_date = extract_rdap_event_date(rdap_data, "registration")
 
     %{
       domain: domain,
@@ -389,7 +423,8 @@ defmodule DomainTwistex.Whois do
       raw_data: inspect(rdap_data),
       registered: true,
       registrar: extract_rdap_registrar(entities),
-      creation_date: extract_rdap_event_date(rdap_data, "registration"),
+      creation_date: creation_date,
+      age_days: parse_age_days(creation_date),
       expiration_date: extract_rdap_event_date(rdap_data, "expiration"),
       updated_date: extract_rdap_event_date(rdap_data, "last changed"),
       status: extract_rdap_status(rdap_data),
@@ -399,6 +434,60 @@ defmodule DomainTwistex.Whois do
       tech_contact: extract_entity_by_role(entities, "technical"),
       abuse_contact: extract_entity_by_role(entities, "abuse")
     }
+  end
+
+  @months %{
+    "jan" => 1,
+    "feb" => 2,
+    "mar" => 3,
+    "apr" => 4,
+    "may" => 5,
+    "jun" => 6,
+    "jul" => 7,
+    "aug" => 8,
+    "sep" => 9,
+    "oct" => 10,
+    "nov" => 11,
+    "dec" => 12
+  }
+
+  @doc """
+  Computes domain age in days from a WHOIS/RDAP creation timestamp string, or
+  returns `nil` when the date cannot be parsed.
+  """
+  @spec parse_age_days(String.t() | nil) :: integer() | nil
+  def parse_age_days(nil), do: nil
+
+  def parse_age_days(raw) when is_binary(raw) do
+    trimmed = String.trim(raw)
+
+    cond do
+      match?({:ok, _, _}, DateTime.from_iso8601(trimmed)) ->
+        {:ok, dt, _} = DateTime.from_iso8601(trimmed)
+        DateTime.diff(DateTime.utc_now(), dt, :day)
+
+      match = Regex.run(~r/\b(\d{4})[-.\/](\d{2})[-.\/](\d{2})\b/, trimmed) ->
+        [_, y, m, d] = match
+        diff_from_ymd(String.to_integer(y), String.to_integer(m), String.to_integer(d))
+
+      match = Regex.run(~r/\b(\d{1,2})[-\s]([A-Za-z]{3})[-\s](\d{4})\b/, trimmed) ->
+        [_, d, mon, y] = match
+
+        case Map.get(@months, String.downcase(mon)) do
+          nil -> nil
+          m -> diff_from_ymd(String.to_integer(y), m, String.to_integer(d))
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  defp diff_from_ymd(year, month, day) do
+    case Date.new(year, month, day) do
+      {:ok, date} -> Date.diff(Date.utc_today(), date)
+      _ -> nil
+    end
   end
 
   defp extract_rdap_registrar(entities) do
@@ -468,7 +557,11 @@ defmodule DomainTwistex.Whois do
         String.trim(value)
 
       [^prop_name, _, _, values] when is_list(values) ->
-        values |> Enum.filter(&is_binary/1) |> Enum.join(", ") |> String.trim() |> normalize_empty()
+        values
+        |> Enum.filter(&is_binary/1)
+        |> Enum.join(", ")
+        |> String.trim()
+        |> normalize_empty()
 
       _ ->
         nil
